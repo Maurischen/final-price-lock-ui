@@ -1,5 +1,5 @@
-import { json } from "@remix-run/node";
-import { Form, useActionData } from "@remix-run/react";
+import { json } from "react-router";
+import { Form, useActionData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
