@@ -2,10 +2,9 @@ import { useActionData, useSubmit } from "react-router"; // 👈 CHANGE 1: Impor
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
-// ⚠️ FIXED: Updated UID from Version 8 config
-const FUNCTION_UID = "a2cd8c4e-24a4-7d7f-899a-e053038dcfc59ba5d2b3"; 
-// ⚠️ FIXED: Changed GID path from 'Function' to 'DiscountFunction'
-const FUNCTION_ID = `gid://shopify/DiscountFunction/${FUNCTION_UID}`;
+// Shopify Function for SKU Price Lock (Matrix live store)
+const FUNCTION_UID = "019aca46-a224-7d77-a875-7af11c39ff14";
+const FUNCTION_ID = `gid://shopify/Function/${FUNCTION_UID}`;
 
 const CREATE_SKU_PRICE_LOCK = `
 mutation CreateSkuPriceLockDiscount(
