@@ -1,4 +1,4 @@
-import { useActionData, useSubmit } from "react-router"; // 👈 CHANGE 1: Import useSubmit, remove Form
+import { useActionData, useSubmit } from "@remix-run/react"; // 👈 CHANGE 1: Import useSubmit, remove Form
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
@@ -74,10 +74,11 @@ export default function AppIndex() {
   const actionData = useActionData();
   const submit = useSubmit(); // 👈 CHANGE 2: Initialize the hook
 
-  const handleClick = () => {
-    // CHANGE 3: Manually trigger the form submission (POST request)
-    submit({}, { method: "post" });
-  };
+  const handleClick = (event) => {
+  console.log("🔥 BUTTON CLICKED");
+  // (event is optional here, but handy if you later wrap this in a <form>)
+  submit({}, { method: "post" });
+};
 
   return (
     <s-page heading="Final Price Lock">
