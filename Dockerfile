@@ -1,18 +1,21 @@
+# Use a recent Node
 FROM node:20-alpine
-RUN apk add --no-cache openssl
 
-EXPOSE 3000
-
+# App directory
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Install deps first (better cache)
+COPY package*.json ./
+RUN npm install --omit=dev
 
-COPY package.json package-lock.json* ./
-
-RUN npm ci --omit=dev && npm cache clean --force
-
+# Copy the rest of the source
 COPY . .
 
+# Build the app (React Router)
 RUN npm run build
 
-CMD ["npm", "run", "docker-start"]
+# Render will inject PORT, react-router-serve reads it
+EXPOSE 3000
+
+# Start the server
+CMD ["npm", "run", "start"]

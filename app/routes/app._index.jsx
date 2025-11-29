@@ -1,4 +1,3 @@
-import { json } from "react-router";
 import { Form, useActionData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -28,7 +27,8 @@ mutation CreateSkuPriceLockDiscount(
 export const loader = async ({ request }) => {
   // Make sure the request is authenticated as the app
   await authenticate.admin(request);
-  return json(null);
+  // React Router v7: just return data directly, no json()
+  return null;
 };
 
 export const action = async ({ request }) => {
@@ -52,10 +52,11 @@ export const action = async ({ request }) => {
   const result = data.data.discountAutomaticAppCreate;
 
   if (result.userErrors && result.userErrors.length > 0) {
-    return json({ ok: false, errors: result.userErrors });
+    // Return plain objects instead of json()
+    return { ok: false, errors: result.userErrors };
   }
 
-  return json({ ok: true, discount: result.automaticAppDiscount });
+  return { ok: true, discount: result.automaticAppDiscount };
 };
 
 export default function AppIndex() {
