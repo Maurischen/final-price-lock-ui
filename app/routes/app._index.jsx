@@ -35,18 +35,21 @@ export const action = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
 
-    const variables = {
-      automaticAppDiscount: {
-        title: "SKU Price Lock",
-        functionId: FUNCTION_ID,
-        startsAt: new Date().toISOString(),
-        combinesWith: {
-          orderDiscounts: true,
-          productDiscounts: true,
-          shippingDiscounts: true,
-        },
-      },
-    };
+ const variables = {
+  automaticAppDiscount: {
+    title: "SKU Price Lock",
+    functionId: FUNCTION_ID,
+    startsAt: new Date().toISOString(),
+    // ✅ required for the new `discounts` API
+    discountClasses: ["PRODUCT"],
+
+    combinesWith: {
+      orderDiscounts: true,
+      productDiscounts: true,
+      shippingDiscounts: true,
+    },
+  },
+};
 
     const response = await admin.graphql(CREATE_SKU_PRICE_LOCK, { variables });
     
