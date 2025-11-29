@@ -1,10 +1,16 @@
-query CartInput {
+query Input {
   cart {
     lines {
       id
       cost {
-        subtotalAmount {
+        amountPerQuantity {
           amount
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          sku
         }
       }
     }
