@@ -26,7 +26,8 @@ const LOCKED_SKU_PRICES = {
 "MP200-I9-1TB": "8700.00",
 "N3ES-I31215U-8/256-PRO": "5900.00",
 "BLK-ACEBOOK 6-N150-16/256": "4900.00",
-"BLK-ACEBOOK12": "8900.00"
+"BLK-ACEBOOK12": "8900.00",
+"RCT-2000VAS": "1790.00",
   // later you’ll replace these with MP20 / S1-N150 / etc.
 };
 
@@ -97,7 +98,7 @@ export function cartLinesDiscountsGenerateRun(input) {
 
   operations.push({
     productDiscountsAdd: {
-      selectionStrategy: ProductDiscountSelectionStrategy.First,
+      selectionStrategy: ProductDiscountSelectionStrategy.All,
       candidates,
     },
   });
