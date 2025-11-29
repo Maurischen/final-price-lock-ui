@@ -3,8 +3,9 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
 // Shopify Function for SKU Price Lock (Matrix live store)
-const FUNCTION_UID = "019aca46-a224-7d77-a875-7af11c39ff14";
-const FUNCTION_ID = `gid://shopify/Function/${FUNCTION_UID}`;
+// ✅ use the raw ID exactly as GraphiQL returns it
+const FUNCTION_ID = "019aca46-a224-7d77-a875-7af11c39ff14";
+
 
 const CREATE_SKU_PRICE_LOCK = `
 mutation CreateSkuPriceLockDiscount(
