@@ -2,7 +2,7 @@
   "name": "final-price-lock-ui",
   "private": true,
   "type": "module",
-  "scripts": {
+ "scripts": {
     "build": "react-router build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
@@ -10,16 +10,9 @@
     "deploy": "shopify app deploy",
     "config:use": "shopify app config use",
     "env": "shopify app env",
-
-    // Prisma generate (no migrations on Render)
     "setup": "prisma generate",
-
-    // Start: generate Prisma client first, then launch server
     "start": "npm run setup && react-router-serve ./build/server/index.js",
-
-    // Docker start just proxies to start
     "docker-start": "npm run start",
-
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
