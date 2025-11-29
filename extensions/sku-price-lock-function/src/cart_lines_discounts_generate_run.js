@@ -7,6 +7,7 @@ import {
 /**
  * @typedef {import("../generated/api").CartInput} CartInput
  * @typedef {import("../generated/api").CartLinesDiscountsGenerateRunResult} Result
+ * @typedef {import("../generated/api").ProductDiscountCandidate} ProductDiscountCandidate
  */
 
 /**
@@ -34,55 +35,73 @@ const LOCKED_SKU_PRICES = {
  * @returns {Result}
  */
 export function cartLinesDiscountsGenerateRun(input) {
-  /** @type {Result["discounts"]} */
-  const discounts = [];
+  /** @type {Result["operations"]} */
+  const operations = [];
 
-  for (const cartLine of input.cart.lines) {
+  const cart = input.cart;
+  if (!cart || !cart.lines || cart.lines.length === 0) {
+    return { operations };
+  }
+
+  // Optional safety: only run if PRODUCT class is allowed
+  const classes = input.discount?.discountClasses ?? [];
+  const hasProductClass = classes.includes("PRODUCT");
+  if (classes.length > 0 && !hasProductClass) {
+    return { operations };
+  }
+
+  /** @type {ProductDiscountCandidate[]} */
+  const candidates = [];
+
+  for (const cartLine of cart.lines) {
     const merchandise = cartLine.merchandise;
+    if (!merchandise || merchandise.__typename !== "ProductVariant") continue;
 
-    if (!merchandise || merchandise.__typename !== "ProductVariant") {
-      continue;
-    }
+    const sku = merchandise.sku;
+    if (!sku) continue;
 
-    const variant = merchandise;
-    const sku = variant.sku;
+    const lockedPriceStr = LOCKED_SKU_PRICES[sku];
+    if (!lockedPriceStr) continue;
 
-    if (!sku || !(sku in LOCKED_SKU_PRICES)) {
-      continue;
-    }
+    const unitPrice = Number(cartLine.cost?.amountPerQuantity?.amount);
+    const lockedPrice = Number(lockedPriceStr);
 
-    const lockedPrice = parseFloat(LOCKED_SKU_PRICES[sku]);
-    const currentPrice = parseFloat(
-      cartLine.cost.amountPerQuantity.amount,
-    );
+    if (!Number.isFinite(unitPrice) || !Number.isFinite(lockedPrice)) continue;
 
-    // No discount if already at or below locked price
-    if (currentPrice <= lockedPrice) {
-      continue;
-    }
+    const discountPerUnit = unitPrice - lockedPrice;
+    if (discountPerUnit <= 0) continue;
 
-    const discountAmount = currentPrice - lockedPrice;
-
-    discounts.push({
-      message: "SKU price lock",
+    candidates.push({
+      message: "Locked SKU price",
       targets: [
         {
-          productVariant: {
-            id: variant.id,
+          cartLine: {
+            id: cartLine.id,
+            // null means “all quantity on this line”
+            quantity: null,
           },
         },
       ],
       value: {
         fixedAmount: {
-          amount: discountAmount.toFixed(2),
+          amount: discountPerUnit.toFixed(2),
+          appliesToEachItem: true,
         },
       },
     });
   }
 
-  return {
-    discounts,
-    discountApplicationStrategy:
-      ProductDiscountSelectionStrategy.MAXIMUM,
-  };
+  if (candidates.length === 0) {
+    return { operations };
+  }
+
+  operations.push({
+    productDiscountsAdd: {
+      selectionStrategy: ProductDiscountSelectionStrategy.First,
+      candidates,
+    },
+  });
+
+  // 👇 FINAL RETURN
+  return { operations };
 }
