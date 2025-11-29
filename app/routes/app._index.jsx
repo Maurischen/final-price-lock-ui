@@ -1,4 +1,4 @@
-import { useActionData, useSubmit } from "react-router"; // 👈 CHANGE 1: Import useSubmit, remove Form
+import { Form, useActionData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
@@ -72,13 +72,6 @@ export const action = async ({ request }) => {
 
 export default function AppIndex() {
   const actionData = useActionData();
-  const submit = useSubmit(); // 👈 CHANGE 2: Initialize the hook
-
-  const handleClick = (event) => {
-  console.log("🔥 BUTTON CLICKED");
-  // (event is optional here, but handy if you later wrap this in a <form>)
-  submit({}, { method: "post" });
-};
 
   return (
     <s-page heading="Final Price Lock">
@@ -88,16 +81,15 @@ export default function AppIndex() {
           <strong>SKU Price Lock</strong> automatic discount in this store.
         </s-paragraph>
 
-        {/* ❌ REMOVED: <Form method="post"> */}
-        
-        <s-button 
-          variant="primary"
-          onClick={handleClick} // 👈 CHANGE 4: Add the custom click handler
-        >
-          Create SKU Price Lock Discount
-        </s-button>
-        
-        {/* ❌ REMOVED: </Form> */}
+        {/* Simple POST form to trigger this route's action */}
+        <Form method="post">
+          <s-button
+            variant="primary"
+            type="submit"
+          >
+            Create SKU Price Lock Discount
+          </s-button>
+        </Form>
 
         {/* Display success message */}
         {actionData?.ok && (
@@ -129,5 +121,3 @@ export default function AppIndex() {
     </s-page>
   );
 }
-
-export const headers = (headersArgs) => boundary.headers(headersArgs);
