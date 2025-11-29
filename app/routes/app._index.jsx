@@ -2,9 +2,10 @@ import { useActionData, useSubmit } from "react-router"; // 👈 CHANGE 1: Impor
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
-// ⚠️ FIX: Use the specific UID from your Partner Dashboard to construct the GID
-const FUNCTION_UID = "a2cd8c4e-24e4-7d7f-899a-e853838dcfc5"; // From Partner Dashboard
-const FUNCTION_ID = `gid://shopify/Function/${FUNCTION_UID}`;
+// ⚠️ FIXED: Updated UID from Version 8 config
+const FUNCTION_UID = "a2cd8c4e-24a4-7d7f-899a-e053038dcfc59ba5d2b3"; 
+// ⚠️ FIXED: Changed GID path from 'Function' to 'DiscountFunction'
+const FUNCTION_ID = `gid://shopify/DiscountFunction/${FUNCTION_UID}`;
 
 const CREATE_SKU_PRICE_LOCK = `
 mutation CreateSkuPriceLockDiscount(
