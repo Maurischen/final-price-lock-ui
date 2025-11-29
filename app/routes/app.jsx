@@ -4,17 +4,27 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const url = new URL(request.url);
 
-  // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  // 1. Retrieve the 'host' from the URL search parameters
+  const host = url.searchParams.get("host");
+  
+  return { 
+    apiKey: process.env.SHOPIFY_API_KEY || "", 
+    // 2. Pass the host and shop to the client
+    host: host,
+    shop: session.shop
+  };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData();
+  // 3. Destructure all needed props
+  const { apiKey, host, shop } = useLoaderData();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    // 4. Pass all props (apiKey, host, shop) to AppProvider to resolve the deprecated warning
+    <AppProvider embedded apiKey={apiKey} host={host} shop={shop}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
         <s-link href="/app/additional">Additional page</s-link>
