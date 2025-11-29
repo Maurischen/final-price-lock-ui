@@ -1,4 +1,4 @@
-import { Form, useActionData } from "react-router";
+import { useActionData, useSubmit } from "react-router"; // 👈 CHANGE 1: Import useSubmit, remove Form
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
@@ -52,7 +52,6 @@ export const action = async ({ request }) => {
     // Check for non-200 responses before attempting to parse JSON
     if (response.status !== 200) {
       const errorText = await response.text();
-      // Throwing an error here will land in the final catch block below
       throw new Error(`GraphQL API returned status ${response.status}: ${errorText}`);
     }
 
@@ -60,22 +59,25 @@ export const action = async ({ request }) => {
     const result = data.data.discountAutomaticAppCreate;
 
     if (result.userErrors && result.userErrors.length > 0) {
-      // The discount mutation failed with user errors (e.g., function not found)
       return { ok: false, errors: result.userErrors };
     }
 
     return { ok: true, discount: result.automaticAppDiscount };
 
   } catch (error) {
-    // This catches the original 500 error or any new error thrown above
     console.error("Discount creation action failed:", error);
-    // Return a generic error to the client UI
     return { ok: false, errors: [{ message: `Server Error: ${error.message || 'An unexpected server error occurred.'}` }] };
   }
 };
 
 export default function AppIndex() {
   const actionData = useActionData();
+  const submit = useSubmit(); // 👈 CHANGE 2: Initialize the hook
+
+  const handleClick = () => {
+    // CHANGE 3: Manually trigger the form submission (POST request)
+    submit({}, { method: "post" });
+  };
 
   return (
     <s-page heading="Final Price Lock">
@@ -85,9 +87,16 @@ export default function AppIndex() {
           <strong>SKU Price Lock</strong> automatic discount in this store.
         </s-paragraph>
 
-        <Form method="post">
-          <s-button variant="primary">Create SKU Price Lock Discount</s-button>
-        </Form>
+        {/* ❌ REMOVED: <Form method="post"> */}
+        
+        <s-button 
+          variant="primary"
+          onClick={handleClick} // 👈 CHANGE 4: Add the custom click handler
+        >
+          Create SKU Price Lock Discount
+        </s-button>
+        
+        {/* ❌ REMOVED: </Form> */}
 
         {/* Display success message */}
         {actionData?.ok && (
@@ -101,7 +110,7 @@ export default function AppIndex() {
           </s-box>
         )}
 
-        {/* Display error message (for userErrors or the new try/catch error) */}
+        {/* Display error message */}
         {actionData?.ok === false && (
           <s-box
             marginBlockStart="base"
