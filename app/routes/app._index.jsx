@@ -2,8 +2,9 @@ import { Form, useActionData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
-// ⚠️ This must match the ID from your GraphiQL query
-const FUNCTION_ID = "gid://shopify/Function/019aca46-a224-7d77-a875-7af11c39ff14";
+// ⚠️ FIX: Use the specific UID from your Partner Dashboard to construct the GID
+const FUNCTION_UID = "a2cd8c4e-24e4-7d7f-899a-e853838dcfc5"; // From Partner Dashboard
+const FUNCTION_ID = `gid://shopify/Function/${FUNCTION_UID}`;
 
 const CREATE_SKU_PRICE_LOCK = `
 mutation CreateSkuPriceLockDiscount(
@@ -25,38 +26,52 @@ mutation CreateSkuPriceLockDiscount(
 `;
 
 export const loader = async ({ request }) => {
-  // Make sure the request is authenticated as the app
   await authenticate.admin(request);
-  // React Router v7: just return data directly, no json()
   return null;
 };
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  try {
+    const { admin } = await authenticate.admin(request);
 
-  const variables = {
-    automaticAppDiscount: {
-      title: "SKU Price Lock",
-      functionId: FUNCTION_ID,
-      startsAt: new Date().toISOString(),
-      combinesWith: {
-        orderDiscounts: true,
-        productDiscounts: true,
-        shippingDiscounts: true,
+    const variables = {
+      automaticAppDiscount: {
+        title: "SKU Price Lock",
+        functionId: FUNCTION_ID,
+        startsAt: new Date().toISOString(),
+        combinesWith: {
+          orderDiscounts: true,
+          productDiscounts: true,
+          shippingDiscounts: true,
+        },
       },
-    },
-  };
+    };
 
-  const response = await admin.graphql(CREATE_SKU_PRICE_LOCK, { variables });
-  const data = await response.json();
-  const result = data.data.discountAutomaticAppCreate;
+    const response = await admin.graphql(CREATE_SKU_PRICE_LOCK, { variables });
+    
+    // Check for non-200 responses before attempting to parse JSON
+    if (response.status !== 200) {
+      const errorText = await response.text();
+      // Throwing an error here will land in the final catch block below
+      throw new Error(`GraphQL API returned status ${response.status}: ${errorText}`);
+    }
 
-  if (result.userErrors && result.userErrors.length > 0) {
-    // Return plain objects instead of json()
-    return { ok: false, errors: result.userErrors };
+    const data = await response.json();
+    const result = data.data.discountAutomaticAppCreate;
+
+    if (result.userErrors && result.userErrors.length > 0) {
+      // The discount mutation failed with user errors (e.g., function not found)
+      return { ok: false, errors: result.userErrors };
+    }
+
+    return { ok: true, discount: result.automaticAppDiscount };
+
+  } catch (error) {
+    // This catches the original 500 error or any new error thrown above
+    console.error("Discount creation action failed:", error);
+    // Return a generic error to the client UI
+    return { ok: false, errors: [{ message: `Server Error: ${error.message || 'An unexpected server error occurred.'}` }] };
   }
-
-  return { ok: true, discount: result.automaticAppDiscount };
 };
 
 export default function AppIndex() {
@@ -74,6 +89,7 @@ export default function AppIndex() {
           <s-button variant="primary">Create SKU Price Lock Discount</s-button>
         </Form>
 
+        {/* Display success message */}
         {actionData?.ok && (
           <s-box
             marginBlockStart="base"
@@ -85,6 +101,7 @@ export default function AppIndex() {
           </s-box>
         )}
 
+        {/* Display error message (for userErrors or the new try/catch error) */}
         {actionData?.ok === false && (
           <s-box
             marginBlockStart="base"
