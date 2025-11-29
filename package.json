@@ -2,7 +2,8 @@
   "name": "final-price-lock-ui",
   "private": true,
   "type": "module",
- "scripts": {
+  "scripts": {
+    "postinstall": "prisma generate",
     "build": "react-router build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
@@ -10,8 +11,7 @@
     "deploy": "shopify app deploy",
     "config:use": "shopify app config use",
     "env": "shopify app env",
-    "setup": "prisma generate",
-    "start": "npm run setup && react-router-serve ./build/server/index.js",
+    "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run start",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
@@ -21,33 +21,35 @@
     "typecheck": "react-router typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "^5.19.1",
-    "@remix-run/node": "^2.10.3",
-    "@remix-run/react": "^2.10.3",
-    "@remix-run/serve": "^2.10.3",
-    "@shopify/app": "3.69.0",
-    "@shopify/app-bridge-react": "^4.1.2",
+    "@prisma/client": "6.19.0",
+    "@react-router/fs-routes": "7.9.6",
+    "@react-router/node": "7.9.6",
+    "@react-router/serve": "7.9.6",
+    "@shopify/app-bridge-react": "^4.1.6",
     "@shopify/polaris": "^12.15.0",
-    "@shopify/react-router": "3.4.4",
-    "@shopify/shopify-app-remix": "2.3.2",
+    "@shopify/shopify-app-react-router": "^1.0.3",
+    "@shopify/shopify-app-session-storage-prisma": "^7.0.3",
     "graphql": "^16.9.0",
-    "isbot": "^4.5.3",
+    "isbot": "^5.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router": "7.9.0",
-    "zod": "^3.23.8"
+    "react-router": "7.9.6",
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "^5.0.2",
     "@graphql-codegen/typed-document-node": "^5.0.1",
-    "@shopify/api-codegen-preset": "^0.4.1",
-    "@types/node": "^20.12.12",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
+    "@react-router/dev": "7.9.6",
+    "@shopify/api-codegen-preset": "^1.1.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "eslint": "^8.57.0",
-    "prisma": "^5.19.1",
-    "react-router-typegen": "^0.3.2",
-    "typescript": "^5.4.5",
-    "vite": "^5.4.7"
+    "prisma": "6.19.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
