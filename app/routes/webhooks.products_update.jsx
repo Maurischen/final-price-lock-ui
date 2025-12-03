@@ -2,9 +2,12 @@ import { authenticate, unauthenticated } from "../shopify.server";
 import db from "../db.server";
 
 const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
-  mutation PriceGuardVariantUpdate($input: ProductVariantInput!) {
-    productVariantUpdate(input: $input) {
-      productVariant {
+  mutation PriceGuardVariantUpdate(
+    $productId: ID!,
+    $variants: [ProductVariantsBulkInput!]!
+  ) {
+    productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+      productVariants {
         id
         price
       }
@@ -31,6 +34,12 @@ export const action = async ({ request }) => {
     return new Response();
   }
 
+  const productId = payload.admin_graphql_api_id;
+  if (!productId) {
+    console.error("[PriceGuard] Missing product admin_graphql_api_id in payload");
+    return new Response();
+  }
+
   // Get an authenticated Admin client for this shop
   const { admin } = await unauthenticated.admin(shop);
 
@@ -43,7 +52,8 @@ export const action = async ({ request }) => {
     });
 
     if (!rule) {
-      console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
+      // Not a guarded SKU – just skip silently or log if you want
+      // console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
       continue;
     }
 
@@ -62,42 +72,39 @@ export const action = async ({ request }) => {
     );
 
     const variables = {
-      input: {
-        id: variant.admin_graphql_api_id,
-        price: minPrice.toFixed(2),
-      },
+      productId,
+      variants: [
+        {
+          id: variant.admin_graphql_api_id,
+          price: minPrice.toFixed(2),
+        },
+      ],
     };
 
     try {
-      const response = await admin.graphql(
+      // In @shopify/shopify-api v12, admin.graphql returns parsed JSON,
+      // not a fetch Response
+      const result = await admin.graphql(
         PRICE_GUARD_VARIANT_UPDATE_MUTATION,
         { variables }
       );
-
-      const result = await response.json();
 
       console.log(
         `[PriceGuard] Raw GraphQL result for ${sku}:`,
         JSON.stringify(result, null, 2)
       );
 
-      const updateResult = result?.data?.productVariantUpdate;
+      const bulkResult = result?.data?.productVariantsBulkUpdate;
 
-      if (result?.errors?.length) {
-        console.error(
-          `❌ PriceGuard: Top-level GraphQL errors for ${sku}`,
-          JSON.stringify(result.errors, null, 2)
-        );
-      }
-
-      if (updateResult?.userErrors?.length) {
+      if (bulkResult?.userErrors?.length) {
         console.error(
           `❌ PriceGuard: User errors for ${sku}`,
-          JSON.stringify(updateResult.userErrors, null, 2)
+          JSON.stringify(bulkResult.userErrors, null, 2)
         );
       } else {
+        const updatedVariant = bulkResult?.productVariants?.[0];
         console.log(
-          `💰 PriceGuard: Restored ${sku} to ${updateResult?.productVariant?.price}`
+          `💰 PriceGuard: Restored ${sku} to ${updatedVariant?.price}`
         );
       }
     } catch (err) {

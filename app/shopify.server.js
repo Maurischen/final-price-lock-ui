@@ -21,28 +21,20 @@ const shopify = shopifyApp({
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
 
-  // 🔔 Webhooks we want Shopify to call
-  webhooks: {
-    APP_UNINSTALLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/app_uninstalled",
-    },
-    APP_SCOPES_UPDATE: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/app_scopes_update",
-    },
-    PRODUCTS_UPDATE: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/products_update",
-    },
+webhooks: {
+  APP_UNINSTALLED: {
+    deliveryMethod: DeliveryMethod.Http,
+    callbackUrl: "/webhooks/app/uninstalled",      
   },
-
-  // 🪝 After a shop installs / re-auths, register all of the above
-  hooks: {
-    afterAuth: async ({ session }) => {
-      await shopify.registerWebhooks({ session });
-    },
+  APP_SCOPES_UPDATE: {
+    deliveryMethod: DeliveryMethod.Http,
+    callbackUrl: "/webhooks/app/scopes_update",    
   },
+  PRODUCTS_UPDATE: {
+    deliveryMethod: DeliveryMethod.Http,
+    callbackUrl: "/webhooks/products_update",      
+  },
+},
 });
 
 export default shopify;
