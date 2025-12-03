@@ -1,9 +1,9 @@
-import { authenticate, unauthenticated } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
-const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
+const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
   mutation PriceGuardVariantUpdate(
-    $productId: ID!,
+    $productId: ID!
     $variants: [ProductVariantsBulkInput!]!
   ) {
     productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -20,8 +20,8 @@ const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
 `;
 
 export const action = async ({ request }) => {
-  // Verify webhook + get context
-  const { topic, shop, payload } = await authenticate.webhook(request);
+  // Verify webhook + get context (includes an authenticated Admin client)
+  const { topic, shop, payload, admin } = await authenticate.webhook(request);
 
   console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
 
@@ -34,14 +34,9 @@ export const action = async ({ request }) => {
     return new Response();
   }
 
-  const productId = payload.admin_graphql_api_id;
-  if (!productId) {
-    console.error("[PriceGuard] Missing product admin_graphql_api_id in payload");
-    return new Response();
-  }
-
-  // Get an authenticated Admin client for this shop
-  const { admin } = await unauthenticated.admin(shop);
+  // PRODUCTS_UPDATE webhook payload is a Product object
+  // e.g. { id: 1234567890, variants: [...] }
+  const productId = `gid://shopify/Product/${payload.id}`;
 
   for (const variant of payload.variants) {
     const sku = variant.sku?.trim();
@@ -52,8 +47,8 @@ export const action = async ({ request }) => {
     });
 
     if (!rule) {
-      // Not a guarded SKU – just skip silently or log if you want
-      // console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
+      // No min-price rule for this SKU
+      console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
       continue;
     }
 
@@ -82,8 +77,6 @@ export const action = async ({ request }) => {
     };
 
     try {
-      // In @shopify/shopify-api v12, admin.graphql returns parsed JSON,
-      // not a fetch Response
       const result = await admin.graphql(
         PRICE_GUARD_VARIANT_UPDATE_MUTATION,
         { variables }
