@@ -1,5 +1,4 @@
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import db from "../db.server";
 
 const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
@@ -18,45 +17,49 @@ const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
 `;
 
 export const action = async ({ request }) => {
-  // Same pattern as your app_uninstalled webhook
-  const { topic, shop, session, payload } = await authenticate.webhook(request);
+  // Verify webhook + get context
+  const { topic, shop, payload } = await authenticate.webhook(request);
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+  console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
 
-  // Safety guard
-  if (!payload?.variants || !Array.isArray(payload.variants)) {
+  if (topic !== "PRODUCTS_UPDATE") {
     return new Response();
   }
 
-  // Go through each variant in the updated product
+  if (!payload?.variants || !Array.isArray(payload.variants)) {
+    console.log("⚠️ No variants found on payload");
+    return new Response();
+  }
+
+  // Get an authenticated Admin client for this shop
+  const { admin } = await unauthenticated.admin(shop);
+
   for (const variant of payload.variants) {
     const sku = variant.sku?.trim();
     if (!sku) continue;
 
-    // Look up your min price rule by SKU
     const rule = await db.priceGuard.findUnique({
       where: { sku },
     });
 
-    if (!rule) continue; // no rule → ignore
+    if (!rule) {
+      console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
+      continue;
+    }
 
     const currentPrice = parseFloat(variant.price);
     const minPrice = rule.minPrice;
 
     if (isNaN(currentPrice) || currentPrice >= minPrice) {
-      // Price is fine (>= min) → do nothing
+      console.log(
+        `✅ ${sku}: price ${currentPrice} >= min ${minPrice}, nothing to do`
+      );
       continue;
     }
 
     console.log(
-      `[PriceGuard] ${shop} / SKU ${sku}: price ${currentPrice} < min ${minPrice}. Restoring…`
+      `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`
     );
-
-    // Build GraphQL request to Shopify Admin
-    // Use your stored offline session's shop + access token
-    const shopDomain = session.shop || shop;
-    const endpoint = `https://${shopDomain}/admin/api/2023-10/graphql.json`; 
-    // ^ you can change the API version to match your shopify.app.toml if needed
 
     const variables = {
       input: {
@@ -65,36 +68,32 @@ export const action = async ({ request }) => {
       },
     };
 
-    const resp = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "X-Shopify-Access-Token": session.accessToken,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: PRICE_GUARD_VARIANT_UPDATE_MUTATION,
-        variables,
-      }),
-    });
-
-    const result = await resp.json();
-
-    const updateResult = result?.data?.productVariantUpdate;
-
-    if (updateResult?.userErrors?.length) {
-      console.error(
-        "[PriceGuard] Failed to restore variant price:",
-        updateResult.userErrors
+    try {
+      const response = await admin.graphql(
+        PRICE_GUARD_VARIANT_UPDATE_MUTATION,
+        { variables }
       );
-    } else {
-      console.log(
-        `[PriceGuard] Restored ${sku} to ${updateResult?.productVariant?.price}`
-      );
+
+      const result = await response.json();
+      const updateResult = result?.data?.productVariantUpdate;
+
+      if (updateResult?.userErrors?.length) {
+        console.error(
+          "❌ PriceGuard: Failed to restore price",
+          updateResult.userErrors
+        );
+      } else {
+        console.log(
+          `💰 PriceGuard: Restored ${sku} to ${updateResult?.productVariant?.price}`
+        );
+      }
+    } catch (err) {
+      console.error("❌ PriceGuard: GraphQL call failed", err);
     }
   }
 
   return new Response();
 };
 
-// Optional loader so hitting the URL in a browser doesn’t 404
-export const loader = () => json({ ok: true });
+// Simple loader so hitting the URL in a browser doesn’t 404
+export const loader = () => new Response("OK");
