@@ -2,6 +2,7 @@ import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
@@ -19,6 +20,29 @@ const shopify = shopifyApp({
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
+
+  // 🔔 Webhooks we want Shopify to call
+  webhooks: {
+    APP_UNINSTALLED: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/app_uninstalled",
+    },
+    APP_SCOPES_UPDATE: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/app_scopes_update",
+    },
+    PRODUCTS_UPDATE: {
+      deliveryMethod: DeliveryMethod.Http,
+      callbackUrl: "/webhooks/products_update",
+    },
+  },
+
+  // 🪝 After a shop installs / re-auths, register all of the above
+  hooks: {
+    afterAuth: async ({ session }) => {
+      await shopify.registerWebhooks({ session });
+    },
+  },
 });
 
 export default shopify;
