@@ -75,12 +75,25 @@ export const action = async ({ request }) => {
       );
 
       const result = await response.json();
+
+      console.log(
+        `[PriceGuard] Raw GraphQL result for ${sku}:`,
+        JSON.stringify(result, null, 2)
+      );
+
       const updateResult = result?.data?.productVariantUpdate;
+
+      if (result?.errors?.length) {
+        console.error(
+          `❌ PriceGuard: Top-level GraphQL errors for ${sku}`,
+          JSON.stringify(result.errors, null, 2)
+        );
+      }
 
       if (updateResult?.userErrors?.length) {
         console.error(
-          "❌ PriceGuard: Failed to restore price",
-          updateResult.userErrors
+          `❌ PriceGuard: User errors for ${sku}`,
+          JSON.stringify(updateResult.userErrors, null, 2)
         );
       } else {
         console.log(
@@ -88,10 +101,11 @@ export const action = async ({ request }) => {
         );
       }
     } catch (err) {
-      console.error("❌ PriceGuard: GraphQL call failed", err);
+      console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
     }
   }
 
+  // Always respond 200 to the webhook
   return new Response();
 };
 
