@@ -6,7 +6,6 @@ import { authenticate } from "../shopify.server";
 // ✅ use the raw ID exactly as GraphiQL returns it
 const FUNCTION_ID = "019aca46-a224-7d77-a875-7af11c39ff14";
 
-
 const CREATE_SKU_PRICE_LOCK = `
 mutation CreateSkuPriceLockDiscount(
   $automaticAppDiscount: DiscountAutomaticAppInput!
@@ -35,28 +34,28 @@ export const action = async ({ request }) => {
   try {
     const { admin } = await authenticate.admin(request);
 
- const variables = {
-  automaticAppDiscount: {
-    title: "SKU Price Lock",
-    functionId: FUNCTION_ID,
-    startsAt: new Date().toISOString(),
-    // ✅ required for the new `discounts` API
-    discountClasses: ["PRODUCT"],
-
-    combinesWith: {
-      orderDiscounts: true,
-      productDiscounts: true,
-      shippingDiscounts: true,
-    },
-  },
-};
+    const variables = {
+      automaticAppDiscount: {
+        title: "SKU Price Lock",
+        functionId: FUNCTION_ID,
+        startsAt: new Date().toISOString(),
+        // ✅ required for the new `discounts` API
+        discountClasses: ["PRODUCT"],
+        combinesWith: {
+          orderDiscounts: true,
+          productDiscounts: true,
+          shippingDiscounts: true,
+        },
+      },
+    };
 
     const response = await admin.graphql(CREATE_SKU_PRICE_LOCK, { variables });
-    
-    // Check for non-200 responses before attempting to parse JSON
+
     if (response.status !== 200) {
       const errorText = await response.text();
-      throw new Error(`GraphQL API returned status ${response.status}: ${errorText}`);
+      throw new Error(
+        `GraphQL API returned status ${response.status}: ${errorText}`,
+      );
     }
 
     const data = await response.json();
@@ -67,10 +66,19 @@ export const action = async ({ request }) => {
     }
 
     return { ok: true, discount: result.automaticAppDiscount };
-
   } catch (error) {
     console.error("Discount creation action failed:", error);
-    return { ok: false, errors: [{ message: `Server Error: ${error.message || 'An unexpected server error occurred.'}` }] };
+    return {
+      ok: false,
+      errors: [
+        {
+          message:
+            `Server Error: ${
+              error.message || "An unexpected server error occurred."
+            }`,
+        },
+      ],
+    };
   }
 };
 
@@ -85,17 +93,12 @@ export default function AppIndex() {
           <strong>SKU Price Lock</strong> automatic discount in this store.
         </s-paragraph>
 
-        {/* Simple POST form to trigger this route's action */}
         <Form method="post">
-          <s-button
-            variant="primary"
-            type="submit"
-          >
+          <s-button variant="primary" type="submit">
             Create SKU Price Lock Discount
           </s-button>
         </Form>
 
-        {/* Display success message */}
         {actionData?.ok && (
           <s-box
             marginBlockStart="base"
@@ -107,7 +110,6 @@ export default function AppIndex() {
           </s-box>
         )}
 
-        {/* Display error message */}
         {actionData?.ok === false && (
           <s-box
             marginBlockStart="base"
@@ -116,11 +118,24 @@ export default function AppIndex() {
             borderRadius="loose"
           >
             <s-text as="p">Failed to create discount:</s-text>
-            <s-code>
-              {JSON.stringify(actionData.errors, null, 2)}
-            </s-code>
+            <s-code>{JSON.stringify(actionData.errors, null, 2)}</s-code>
           </s-box>
         )}
+      </s-section>
+
+      {/* 🔹 New section: link to Price Guard admin page */}
+      <s-section>
+        <s-paragraph>
+          Need to change or add locked prices for specific SKUs? Open your{" "}
+          <strong>Price Guard Rules</strong> admin panel below.
+        </s-paragraph>
+
+        {/* Simple GET to navigate to the new route */}
+        <Form method="get" action="/app/price-guard">
+          <s-button variant="secondary" type="submit">
+            Open Price Guard Rules
+          </s-button>
+        </Form>
       </s-section>
     </s-page>
   );

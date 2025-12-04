@@ -43,7 +43,7 @@ export const action = async ({ request }) => {
     console.warn(
       "⚠️ PriceGuard: no offline admin session yet for",
       shop,
-      "- skipping this webhook."
+      "- skipping this webhook.",
     );
     // This will happen right after a fresh deploy until you open the app once.
     return new Response();
@@ -68,20 +68,20 @@ export const action = async ({ request }) => {
     const currentPrice = parseFloat(variant.price);
     const minPrice = Number(rule.minPrice);
 
-    if (isNaN(currentPrice)) {
+    if (Number.isNaN(currentPrice)) {
       console.log(`⚠️ ${sku}: variant has no numeric price, skipping`);
       continue;
     }
 
     if (currentPrice >= minPrice) {
       console.log(
-        `✅ ${sku}: price ${currentPrice} >= min ${minPrice}, nothing to do`
+        `✅ ${sku}: price ${currentPrice} >= min ${minPrice}, nothing to do`,
       );
       continue;
     }
 
     console.log(
-      `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`
+      `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`,
     );
 
     // This is the GraphQL variant id coming from the webhook payload
@@ -102,31 +102,46 @@ export const action = async ({ request }) => {
     // fallback: build a gid if for some reason we only have a numeric id
     `gid://shopify/Product/${String(payload.id).replace(/[^0-9]/g, "")}`;
 
-    try {
-    const result = await admin.graphql(PRICE_GUARD_VARIANT_UPDATE_MUTATION, {
-      variables: {
-        productId,
-        variants: variantsToFix,
+  try {
+    const response = await admin.graphql(
+      PRICE_GUARD_VARIANT_UPDATE_MUTATION,
+      {
+        variables: {
+          productId,
+          variants: variantsToFix,
+        },
       },
-    });
-
-    console.log(
-      "[PriceGuard] Raw GraphQL result:",
-      JSON.stringify(result, null, 2)
     );
 
-    const bulkResult = result?.data?.productVariantsBulkUpdate;
+    if (response.status !== 200) {
+      const text = await response.text();
+      console.error(
+        "❌ PriceGuard: GraphQL HTTP error",
+        response.status,
+        text,
+      );
+      return new Response();
+    }
+
+    const data = await response.json();
+
+    console.log(
+      "[PriceGuard] Raw GraphQL data:",
+      JSON.stringify(data, null, 2),
+    );
+
+    const bulkResult = data?.data?.productVariantsBulkUpdate;
 
     if (bulkResult?.userErrors?.length) {
       console.error(
         "❌ PriceGuard: GraphQL userErrors",
-        JSON.stringify(bulkResult.userErrors, null, 2)
+        JSON.stringify(bulkResult.userErrors, null, 2),
       );
     } else {
       const updated = bulkResult?.productVariants ?? [];
       console.log(
         "💰 PriceGuard: Restored variants:",
-        updated.map((v) => `${v.id} → ${v.price}`)
+        updated.map((v) => `${v.id} → ${v.price}`),
       );
     }
   } catch (err) {
@@ -139,4 +154,3 @@ export const action = async ({ request }) => {
 
 // So hitting the URL in a browser doesn’t 404
 export const loader = () => new Response("OK");
-
