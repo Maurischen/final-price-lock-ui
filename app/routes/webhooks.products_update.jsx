@@ -1,7 +1,7 @@
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import db from "../db.server";
 
-const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
+const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
   mutation PriceGuardVariantUpdate(
     $productId: ID!,
     $variants: [ProductVariantsBulkInput!]!
@@ -20,38 +20,37 @@ const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
 `;
 
 export const action = async ({ request }) => {
-  // Verify webhook + get context (including admin client)
-  const { topic, shop, payload, admin, session } = await authenticate.webhook(
-    request
-  );
+  const { topic, shop, payload } = await authenticate.webhook(request);
 
-  console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
-
-  // If Shopify fires this after uninstall, admin can be missing
-  if (!admin) {
-    console.log("⚠️ No admin context for webhook", { topic, shop, session });
-    return new Response();
-  }
-
+  // Only care about product updates
   if (topic !== "PRODUCTS_UPDATE") {
     return new Response();
   }
 
+  console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
+
   if (!payload?.variants || !Array.isArray(payload.variants)) {
-    console.log("⚠️ No variants found on payload");
+    console.log("⚠️ No variants array on payload");
     return new Response();
   }
 
-  // PRODUCT_UPDATE payload is the product itself
-  const productId =
-    payload.admin_graphql_api_id || payload.id || null;
-
-  if (!productId) {
-    console.log("⚠️ No productId/admin_graphql_api_id on payload, aborting");
+  // 🔹 Get an offline Admin client for this shop
+  let admin;
+  try {
+    const ctx = await unauthenticated.admin(shop);
+    admin = ctx.admin;
+  } catch (err) {
+    console.warn(
+      "⚠️ PriceGuard: no offline admin session yet for",
+      shop,
+      "- skipping this webhook."
+    );
+    // This will happen right after a fresh deploy until you open the app once.
     return new Response();
   }
 
-  const variantsToUpdate = [];
+  // Collect all variants we actually need to fix in one GraphQL call
+  const variantsToFix = [];
 
   for (const variant of payload.variants) {
     const sku = variant.sku?.trim();
@@ -62,15 +61,19 @@ export const action = async ({ request }) => {
     });
 
     if (!rule) {
-      // Not a guarded SKU – just log for debugging
-      console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
+      // Not a guarded SKU, skip quietly
       continue;
     }
 
     const currentPrice = parseFloat(variant.price);
-    const minPrice = rule.minPrice;
+    const minPrice = Number(rule.minPrice);
 
-    if (isNaN(currentPrice) || currentPrice >= minPrice) {
+    if (isNaN(currentPrice)) {
+      console.log(`⚠️ ${sku}: variant has no numeric price, skipping`);
+      continue;
+    }
+
+    if (currentPrice >= minPrice) {
       console.log(
         `✅ ${sku}: price ${currentPrice} >= min ${minPrice}, nothing to do`
       );
@@ -81,57 +84,45 @@ export const action = async ({ request }) => {
       `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`
     );
 
-    variantsToUpdate.push({
-      id: variant.admin_graphql_api_id, // variant GID
+    // This is the GraphQL variant id coming from the webhook payload
+    variantsToFix.push({
+      id: variant.admin_graphql_api_id,
       price: minPrice.toFixed(2),
     });
   }
 
-  // Nothing to fix on this product
-  if (variantsToUpdate.length === 0) {
-    console.log("ℹ️ No variants needed restoring for this PRODUCTS_UPDATE");
+  // Nothing to update? We’re done.
+  if (!variantsToFix.length) {
     return new Response();
   }
 
-  const variables = {
-    productId,
-    variants: variantsToUpdate,
-  };
+  // 🔹 Get the product GID for productVariantsBulkUpdate
+  const productId =
+    payload.admin_graphql_api_id ??
+    // fallback: build a gid if for some reason we only have a numeric id
+    `gid://shopify/Product/${String(payload.id).replace(/[^0-9]/g, "")}`;
 
   try {
-    const result = await admin.graphql(
-      PRICE_GUARD_VARIANT_UPDATE_MUTATION,
-      { variables }
-    );
+    const result = await admin.graphql(PRICE_GUARD_VARIANT_UPDATE_MUTATION, {
+      variables: {
+        productId,
+        variants: variantsToFix,
+      },
+    });
 
     console.log(
-      `[PriceGuard] Raw GraphQL result:`,
+      "[PriceGuard] Raw GraphQL result:",
       JSON.stringify(result, null, 2)
     );
 
     const bulkResult = result?.data?.productVariantsBulkUpdate;
 
-    if (!bulkResult) {
+    if (bulkResult?.userErrors?.length) {
       console.error(
-        "❌ PriceGuard: No productVariantsBulkUpdate field in result"
-      );
-    } else if (bulkResult.userErrors?.length) {
-      console.error(
-        `❌ PriceGuard: User errors`,
+        "❌ PriceGuard: GraphQL userErrors",
         JSON.stringify(bulkResult.userErrors, null, 2)
       );
     } else {
-      for (const v of bulkResult.productVariants || []) {
-        console.log(`💰 PriceGuard: Restored variant ${v.id} to ${v.price}`);
-      }
-    }
-  } catch (err) {
-    console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
-  }
-
-  // Always respond 200 to the webhook
-  return new Response();
-};
-
-// Simple loader so hitting the URL in a browser doesn’t 404
-export const loader = () => new Response("OK");
+      const updated = bulkResult?.productVariants ?? [];
+      console.log(
+        "💰 PriceGuard: Restored variant
