@@ -1,9 +1,9 @@
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import db from "../db.server";
 
-const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
+const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `
   mutation PriceGuardVariantUpdate(
-    $productId: ID!
+    $productId: ID!,
     $variants: [ProductVariantsBulkInput!]!
   ) {
     productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -20,8 +20,8 @@ const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
 `;
 
 export const action = async ({ request }) => {
-  // Verify webhook + get context (includes an authenticated Admin client)
-  const { topic, shop, payload, admin } = await authenticate.webhook(request);
+  // Verify webhook + get context
+  const { topic, shop, payload } = await authenticate.webhook(request);
 
   console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
 
@@ -34,9 +34,8 @@ export const action = async ({ request }) => {
     return new Response();
   }
 
-  // PRODUCTS_UPDATE webhook payload is a Product object
-  // e.g. { id: 1234567890, variants: [...] }
-  const productId = `gid://shopify/Product/${payload.id}`;
+  // 🔑 Get an authenticated Admin client for this shop
+  const { admin } = await unauthenticated.admin(shop);
 
   for (const variant of payload.variants) {
     const sku = variant.sku?.trim();
@@ -47,8 +46,8 @@ export const action = async ({ request }) => {
     });
 
     if (!rule) {
-      // No min-price rule for this SKU
-      console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
+      // Not a guarded SKU – just skip
+      // console.log(`➡️ No PriceGuard rule for SKU ${sku}, skipping`);
       continue;
     }
 
@@ -66,28 +65,44 @@ export const action = async ({ request }) => {
       `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`
     );
 
+    // ⚠️ productVariantsBulkUpdate needs the product GID.
+    // PRODUCT_UPDATE payload has a numeric product ID on payload.id,
+    // and each variant has admin_graphql_api_id like:
+    //   gid://shopify/ProductVariant/123456789
+    //
+    // Easiest is to derive product GID from the variant GID:
+    const variantGid = variant.admin_graphql_api_id;
+    const productGid = variantGid.replace("ProductVariant", "Product");
+
     const variables = {
-      productId,
+      productId: productGid,
       variants: [
         {
-          id: variant.admin_graphql_api_id,
+          id: variantGid,
           price: minPrice.toFixed(2),
         },
       ],
     };
 
     try {
-      const result = await admin.graphql(
+      const { data, errors } = await admin.graphql(
         PRICE_GUARD_VARIANT_UPDATE_MUTATION,
         { variables }
       );
 
       console.log(
         `[PriceGuard] Raw GraphQL result for ${sku}:`,
-        JSON.stringify(result, null, 2)
+        JSON.stringify(data ?? {}, null, 2)
       );
 
-      const bulkResult = result?.data?.productVariantsBulkUpdate;
+      if (errors?.length) {
+        console.error(
+          `❌ PriceGuard: Top-level GraphQL errors for ${sku}`,
+          JSON.stringify(errors, null, 2)
+        );
+      }
+
+      const bulkResult = data?.productVariantsBulkUpdate;
 
       if (bulkResult?.userErrors?.length) {
         console.error(
@@ -97,7 +112,9 @@ export const action = async ({ request }) => {
       } else {
         const updatedVariant = bulkResult?.productVariants?.[0];
         console.log(
-          `💰 PriceGuard: Restored ${sku} to ${updatedVariant?.price}`
+          `💰 PriceGuard: Restored ${sku} to ${
+            updatedVariant?.price ?? minPrice
+          }`
         );
       }
     } catch (err) {
