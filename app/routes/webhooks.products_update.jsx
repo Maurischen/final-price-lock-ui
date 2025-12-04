@@ -57,8 +57,10 @@ export const action = async ({ request }) => {
     if (!sku) continue;
 
     const rule = await db.priceGuard.findUnique({
-      where: { sku },
-    });
+  where: {
+    shop_sku: { shop, sku },
+  },
+});
 
     if (!rule) {
       // Not a guarded SKU, skip quietly

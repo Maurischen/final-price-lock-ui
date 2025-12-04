@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")   // <-- IMPORTANT: use a variable, not the file path
+  url      = env("DATABASE_URL") // <-- IMPORTANT: use a variable, not the file path
 }
 
 model Session {
@@ -30,8 +30,11 @@ model Session {
 
 model PriceGuard {
   id        String   @id @default(cuid())
-  sku       String   @unique
+  shop      String   @default("matrix-warehouse-sa.myshopify.com") // existing rules = Matrix
+  sku       String
   minPrice  Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([shop, sku]) // one rule per SKU per shop
 }
