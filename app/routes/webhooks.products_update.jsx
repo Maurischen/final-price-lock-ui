@@ -102,7 +102,7 @@ export const action = async ({ request }) => {
     // fallback: build a gid if for some reason we only have a numeric id
     `gid://shopify/Product/${String(payload.id).replace(/[^0-9]/g, "")}`;
 
-  try {
+    try {
     const result = await admin.graphql(PRICE_GUARD_VARIANT_UPDATE_MUTATION, {
       variables: {
         productId,
@@ -125,4 +125,18 @@ export const action = async ({ request }) => {
     } else {
       const updated = bulkResult?.productVariants ?? [];
       console.log(
-        "💰 PriceGuard: Restored variant
+        "💰 PriceGuard: Restored variants:",
+        updated.map((v) => `${v.id} → ${v.price}`)
+      );
+    }
+  } catch (err) {
+    console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
+  }
+
+  // Always 200 so Shopify doesn’t retry
+  return new Response();
+};
+
+// So hitting the URL in a browser doesn’t 404
+export const loader = () => new Response("OK");
+
