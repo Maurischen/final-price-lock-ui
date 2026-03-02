@@ -15,35 +15,23 @@ function chunkArray(arr, size) {
   return out;
 }
 
-async function safeCreateManyScans(scans) {
+/**
+ * SQLite-safe createMany helper:
+ * - SQLite doesn't support skipDuplicates
+ * - SQLite has a max variable limit (so chunk inserts)
+ * - We clear scans for this runId first so the UI always reflects the latest attempt
+ */
+async function writeScannedSample(runId, scans) {
+  // Always reset for this run (idempotent + keeps UI clean)
+  await prisma.productAuditScan.deleteMany({ where: { runId } });
+
   if (!scans.length) return;
 
-  // Prisma on SQLite doesn't support skipDuplicates.
-  // Also: SQLite has a max variables limit, so we chunk inserts.
   const chunks = chunkArray(scans, 200);
 
   for (const chunk of chunks) {
-    try {
-      await prisma.productAuditScan.createMany({ data: chunk });
-    } catch (e) {
-      // If you add a @@unique([runId, productGid]) later, duplicates would throw.
-      // Fallback to per-row insert and ignore duplicates gracefully.
-      for (const row of chunk) {
-        try {
-          await prisma.productAuditScan.create({ data: row });
-        } catch (rowErr) {
-          // Ignore unique constraint errors; throw anything else.
-          const msg = String(rowErr?.message || rowErr);
-          if (
-            msg.includes("Unique constraint failed") ||
-            msg.includes("P2002")
-          ) {
-            continue;
-          }
-          throw rowErr;
-        }
-      }
-    }
+    // createMany is fastest; chunking avoids sqlite variable limits
+    await prisma.productAuditScan.createMany({ data: chunk });
   }
 }
 
@@ -59,12 +47,13 @@ export async function runProductAudit({
   shop,
   admin,
   dryRun = false,
-  maxProducts = null,
-  logScannedLimit = 200,
+  maxProducts = null, // e.g. 200 for manual quick runs
+  logScannedLimit = 200, // store only first N scanned items so DB doesn't explode
 } = {}) {
   if (!shop) throw new Error("runProductAudit: missing `shop`");
   if (!admin) throw new Error("runProductAudit: missing `admin` client");
 
+  // Create run record
   const run = await prisma.productAuditRun.create({
     data: { shop, status: "running" },
   });
@@ -97,7 +86,11 @@ export async function runProductAudit({
   let checked = 0;
   let drafted = 0;
 
+  // Buffer only the first N scanned items for UI preview
   const scannedBuffer = [];
+
+  let finalStatus = "completed";
+  let finalError = null;
 
   try {
     while (true) {
@@ -128,6 +121,7 @@ export async function runProductAudit({
 
         const shouldDraft = missingDescription || missingImages;
 
+        // sample for UI
         if (scannedBuffer.length < logScannedLimit) {
           scannedBuffer.push({
             runId: run.id,
@@ -137,39 +131,45 @@ export async function runProductAudit({
             status: p.status,
             missingDescription,
             missingImages,
-            actionTaken: shouldDraft ? (dryRun ? "WOULD_DRAFT" : "DRAFT") : "NONE",
+            actionTaken: shouldDraft
+              ? dryRun
+                ? "WOULD_DRAFT"
+                : "DRAFT"
+              : "NONE",
           });
         }
 
-        if (shouldDraft && p.status === "ACTIVE") {
-          if (!dryRun) {
-            const updResp = await admin.graphql(UPDATE, {
-              variables: { input: { id: p.id, status: "DRAFT" } },
+        // Only draft ACTIVE products; we already query active, but keep it safe
+        if (shouldDraft && p.status === "ACTIVE" && !dryRun) {
+          const updResp = await admin.graphql(UPDATE, {
+            variables: { input: { id: p.id, status: "DRAFT" } },
+          });
+
+          const updJson = await updResp.json();
+          const errs = updJson?.data?.productUpdate?.userErrors || [];
+
+          if (errs.length) {
+            // Keep going, but record the warning
+            console.warn("Draft failed:", p.title, errs);
+          } else {
+            drafted++;
+
+            await prisma.productAuditItem.create({
+              data: {
+                runId: run.id,
+                shop,
+                productGid: p.id,
+                title: p.title,
+                prevStatus: "ACTIVE",
+                newStatus: "DRAFT",
+                missingDescription,
+                missingImages,
+              },
             });
-            const updJson = await updResp.json();
-            const errs = updJson?.data?.productUpdate?.userErrors || [];
-
-            if (errs.length) {
-              console.warn("Draft failed:", p.title, errs);
-            } else {
-              drafted++;
-
-              await prisma.productAuditItem.create({
-                data: {
-                  runId: run.id,
-                  shop,
-                  productGid: p.id,
-                  title: p.title,
-                  prevStatus: "ACTIVE",
-                  newStatus: "DRAFT",
-                  missingDescription,
-                  missingImages,
-                },
-              });
-            }
           }
         }
 
+        // Stop early for manual runs
         if (maxProducts && checked >= maxProducts) {
           after = null;
           break;
@@ -181,27 +181,23 @@ export async function runProductAudit({
       if (!products.pageInfo.hasNextPage) break;
       after = products.pageInfo.endCursor;
     }
-
-    // Save scanned sample (SQLite-safe)
-    await safeCreateManyScans(scannedBuffer);
-
-    await prisma.productAuditRun.update({
-      where: { id: run.id },
-      data: {
-        finishedAt: new Date(),
-        checked,
-        drafted,
-        status: "completed",
-        error: null,
-      },
-    });
-
-    return { runId: run.id, checked, drafted, dryRun };
   } catch (e) {
-    // Attempt to save scannedBuffer even on failure
+    finalStatus = "failed";
+    finalError = String(e?.message || e);
+    throw e;
+  } finally {
+    // Always try write the scanned sample for UI (even if the run failed)
     try {
-      await safeCreateManyScans(scannedBuffer);
-    } catch (ignored) {}
+      await writeScannedSample(run.id, scannedBuffer);
+    } catch (logErr) {
+      // If logging fails, still update run record with original error + logging error hint
+      const msg = String(logErr?.message || logErr);
+      console.warn("Failed writing scanned sample:", msg);
+
+      if (!finalError) finalError = `Scan logging failed: ${msg}`;
+      else finalError = `${finalError} | Scan logging failed: ${msg}`;
+      finalStatus = "failed";
+    }
 
     await prisma.productAuditRun.update({
       where: { id: run.id },
@@ -209,11 +205,11 @@ export async function runProductAudit({
         finishedAt: new Date(),
         checked,
         drafted,
-        status: "failed",
-        error: String(e?.message || e),
+        status: finalStatus,
+        error: finalError,
       },
     });
-
-    throw e;
   }
+
+  return { runId: run.id, checked, drafted, dryRun };
 }
