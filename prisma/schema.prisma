@@ -1,13 +1,10 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL") // IMPORTANT: use env var, not a hard file path
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -26,17 +23,21 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
+
+  @@index([shop])
 }
 
 model PriceGuard {
   id        String   @id @default(cuid())
-  shop      String   @default("matrix-warehouse-sa.myshopify.com") // existing rules = Matrix
+  shop      String   @default("matrix-warehouse-sa.myshopify.com")
   sku       String
   minPrice  Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([shop, sku]) // one rule per SKU per shop
+  @@unique([shop, sku])
+  @@index([shop])
+  @@index([sku])
 }
 
 model EmailTemplate {
@@ -59,6 +60,9 @@ model EmailLog {
   sentAt     DateTime @default(now())
 
   template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([sentAt])
 }
 
 model ProductAuditRun {
@@ -76,7 +80,6 @@ model ProductAuditRun {
 
   @@index([shop])
   @@index([startedAt])
-  @@index([shop, startedAt]) // ✅ helpful for "latest run for shop"
 }
 
 model ProductAuditItem {
@@ -93,9 +96,12 @@ model ProductAuditItem {
 
   run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  @@unique([runId, productGid]) // ✅ prevents duplicates per run
   @@index([runId])
   @@index([shop])
+  @@index([productGid])
+
+  // Optional but recommended:
+  @@unique([runId, productGid])
 }
 
 model ProductAuditScan {
@@ -112,7 +118,10 @@ model ProductAuditScan {
 
   run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  @@unique([runId, productGid]) // ✅ makes skipDuplicates meaningful
   @@index([runId])
   @@index([shop])
+  @@index([productGid])
+
+  // Recommended:
+  @@unique([runId, productGid])
 }
