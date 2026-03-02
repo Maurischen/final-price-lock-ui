@@ -1,11 +1,23 @@
-export async function scanAndDraftProducts(admin, { dryRun = false } = {}) {
+function stripHtmlToText(html = "") {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export async function scanAndDraftProducts(
+  admin,
+  { dryRun = false, maxProducts = null } = {}
+) {
   let after = null;
   let drafted = 0;
   let checked = 0;
 
   const query = `
-    query Products($first: Int!, $after: String) {
-      products(first: $first, after: $after) {
+    query Products($first: Int!, $after: String, $query: String!) {
+      products(first: $first, after: $after, query: $query) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
@@ -29,41 +41,50 @@ export async function scanAndDraftProducts(admin, { dryRun = false } = {}) {
 
   while (true) {
     const response = await admin.graphql(query, {
-      variables: { first: 100, after },
+      variables: { first: 100, after, query: "status:active" }, // ✅ only ACTIVE
     });
 
-    const data = await response.json();
-    const products = data.data.products;
+    const json = await response.json();
+    const products = json?.data?.products;
+
+    if (!products) {
+      const errText =
+        json?.errors?.map((e) => e.message).join("; ") ||
+        "No products payload returned";
+      throw new Error(`Product list query failed: ${errText}`);
+    }
 
     for (const p of products.nodes) {
       checked++;
 
-      const descText = p.descriptionHtml
-        ?.replace(/<[^>]+>/g, "")
-        ?.trim() || "";
-
+      const descText = stripHtmlToText(p.descriptionHtml || "");
       const missingDescription = descText.length === 0;
-      const missingImages = p.images.edges.length === 0;
+      const missingImages = (p.images?.edges || []).length === 0;
 
       const shouldDraft = missingDescription || missingImages;
 
-      if (shouldDraft && p.status === "ACTIVE") {
+      if (shouldDraft) {
         if (dryRun) {
           console.log("[DRY RUN] Would draft:", p.title);
-          continue;
+        } else {
+          const updResp = await admin.graphql(mutation, {
+            variables: { input: { id: p.id, status: "DRAFT" } },
+          });
+
+          const updJson = await updResp.json();
+          const errs = updJson?.data?.productUpdate?.userErrors || [];
+
+          if (errs.length) {
+            console.warn("Draft failed:", p.title, errs);
+          } else {
+            drafted++;
+            console.log("Drafted:", p.title);
+          }
         }
+      }
 
-        await admin.graphql(mutation, {
-          variables: {
-            input: {
-              id: p.id,
-              status: "DRAFT",
-            },
-          },
-        });
-
-        drafted++;
-        console.log("Drafted:", p.title);
+      if (maxProducts && checked >= maxProducts) {
+        return { checked, drafted };
       }
     }
 
