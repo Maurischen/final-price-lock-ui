@@ -1,4 +1,4 @@
-import shopify from "../shopify.server";
+import shopify, { sessionStorage } from "../shopify.server";
 import prisma from "../db.server";
 
 // OR rule helpers
@@ -45,7 +45,8 @@ async function auditShop(admin) {
       data: { query: LIST, variables: { first: 100, after } },
     });
 
-    const products = resp.body.data.products;
+    const products = resp.body?.data?.products;
+    if (!products) break;
 
     for (const p of products.nodes) {
       checked++;
@@ -58,10 +59,19 @@ async function auditShop(admin) {
 
       // Safety: only move ACTIVE -> DRAFT
       if (shouldDraft && p.status === "ACTIVE") {
-        await admin.query({
-          data: { query: UPDATE, variables: { input: { id: p.id, status: "DRAFT" } } },
+        const upd = await admin.query({
+          data: {
+            query: UPDATE,
+            variables: { input: { id: p.id, status: "DRAFT" } },
+          },
         });
-        drafted++;
+
+        const errs = upd.body?.data?.productUpdate?.userErrors || [];
+        if (errs.length) {
+          console.warn("Draft failed:", p.title, errs);
+        } else {
+          drafted++;
+        }
       }
     }
 
@@ -80,8 +90,7 @@ export const loader = async ({ request }) => {
   }
 
   // 1) Find all distinct shops that have sessions
-  // Prisma model name is usually "session" in Shopify CLI apps.
-  // If yours differs (e.g., Session), change prisma.session -> prisma.session
+  // (This is just to get the list of shops; we won’t fetch sessions directly with Prisma.)
   const shops = await prisma.session.findMany({
     distinct: ["shop"],
     select: { shop: true },
@@ -93,15 +102,20 @@ export const loader = async ({ request }) => {
 
   for (const { shop } of shops) {
     try {
-      // 2) Prefer OFFLINE sessions for background jobs (isOnline = false)
-      // Also prefer the most recently updated one.
-      const offline = await prisma.session.findFirst({
-        where: { shop, isOnline: false },
-        orderBy: { updatedAt: "desc" },
-      });
+      // 2) Get sessions via Shopify sessionStorage (safer than Prisma queries)
+      const sessions = await sessionStorage.findSessionsByShop(shop);
+
+      // Prefer OFFLINE session for background jobs
+      const offline = sessions.find((s) => s.isOnline === false) || null;
 
       if (!offline) {
         results.push({ shop, ok: false, error: "No offline session found" });
+        continue;
+      }
+
+      // Extra safety: must have access token
+      if (!offline.accessToken) {
+        results.push({ shop, ok: false, error: "Offline session missing accessToken" });
         continue;
       }
 
@@ -116,8 +130,8 @@ export const loader = async ({ request }) => {
 
       results.push({ shop, ok: true, checked, drafted });
 
-      // Optional: small pause between shops to be gentle with rate limits
-      await new Promise((r) => setTimeout(r, 250));
+      // Optional: be gentle with rate limits between shops
+      await new Promise((r) => setTimeout(r, 300));
     } catch (e) {
       results.push({ shop, ok: false, error: String(e?.message || e) });
     }
