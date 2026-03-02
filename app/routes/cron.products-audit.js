@@ -1,5 +1,5 @@
-import shopify, { sessionStorage } from "../shopify.server";
 import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
 
 // OR rule helpers
 function stripHtmlToText(html = "") {
@@ -41,11 +41,10 @@ async function auditShop(admin) {
   let drafted = 0;
 
   while (true) {
-    const resp = await admin.query({
-      data: { query: LIST, variables: { first: 100, after } },
-    });
+    const resp = await admin.graphql(LIST, { variables: { first: 100, after } });
+    const json = await resp.json();
 
-    const products = resp.body?.data?.products;
+    const products = json?.data?.products;
     if (!products) break;
 
     for (const p of products.nodes) {
@@ -59,14 +58,12 @@ async function auditShop(admin) {
 
       // Safety: only move ACTIVE -> DRAFT
       if (shouldDraft && p.status === "ACTIVE") {
-        const upd = await admin.query({
-          data: {
-            query: UPDATE,
-            variables: { input: { id: p.id, status: "DRAFT" } },
-          },
+        const updResp = await admin.graphql(UPDATE, {
+          variables: { input: { id: p.id, status: "DRAFT" } },
         });
+        const updJson = await updResp.json();
 
-        const errs = upd.body?.data?.productUpdate?.userErrors || [];
+        const errs = updJson?.data?.productUpdate?.userErrors || [];
         if (errs.length) {
           console.warn("Draft failed:", p.title, errs);
         } else {
@@ -89,8 +86,7 @@ export const loader = async ({ request }) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // 1) Find all distinct shops that have sessions
-  // (This is just to get the list of shops; we won’t fetch sessions directly with Prisma.)
+  // Get all distinct shops from stored sessions
   const shops = await prisma.session.findMany({
     distinct: ["shop"],
     select: { shop: true },
@@ -102,27 +98,9 @@ export const loader = async ({ request }) => {
 
   for (const { shop } of shops) {
     try {
-      // 2) Get sessions via Shopify sessionStorage (safer than Prisma queries)
-      const sessions = await sessionStorage.findSessionsByShop(shop);
+      // ✅ This is the key change: get an Admin client without a user request
+      const { admin } = await unauthenticated.admin(shop);
 
-      // Prefer OFFLINE session for background jobs
-      const offline = sessions.find((s) => s.isOnline === false) || null;
-
-      if (!offline) {
-        results.push({ shop, ok: false, error: "No offline session found" });
-        continue;
-      }
-
-      // Extra safety: must have access token
-      if (!offline.accessToken) {
-        results.push({ shop, ok: false, error: "Offline session missing accessToken" });
-        continue;
-      }
-
-      // 3) Build Admin client for this shop
-      const admin = new shopify.api.clients.Graphql({ session: offline });
-
-      // 4) Audit & draft
       const { checked, drafted } = await auditShop(admin);
 
       totalChecked += checked;
@@ -130,7 +108,7 @@ export const loader = async ({ request }) => {
 
       results.push({ shop, ok: true, checked, drafted });
 
-      // Optional: be gentle with rate limits between shops
+      // Gentle pause between shops
       await new Promise((r) => setTimeout(r, 300));
     } catch (e) {
       results.push({ shop, ok: false, error: String(e?.message || e) });
