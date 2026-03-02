@@ -15,45 +15,32 @@ function chunkArray(arr, size) {
   return out;
 }
 
-/**
- * SQLite-safe createMany helper:
- * - SQLite doesn't support skipDuplicates
- * - SQLite has a max variable limit (so chunk inserts)
- * - We clear scans for this runId first so the UI always reflects the latest attempt
- */
 async function writeScannedSample(runId, scans) {
-  // Always reset for this run (idempotent + keeps UI clean)
+  // Keep UI clean + idempotent
   await prisma.productAuditScan.deleteMany({ where: { runId } });
 
   if (!scans.length) return;
 
-  const chunks = chunkArray(scans, 200);
+  // Insert one-by-one (chunked) so we never rely on createMany
+  const chunks = chunkArray(scans, 50);
 
   for (const chunk of chunks) {
-    // createMany is fastest; chunking avoids sqlite variable limits
-    await prisma.productAuditScan.createMany({ data: chunk });
+    await prisma.$transaction(
+      chunk.map((row) => prisma.productAuditScan.create({ data: row }))
+    );
   }
 }
 
-/**
- * Runs an audit for ONE shop using the provided authenticated `admin` client.
- * - Scans ACTIVE products only
- * - Drafts product if missing description OR missing images
- * - Logs:
- *    - A limited sample of scanned products (for UI visibility)
- *    - All changed products (drafted) with reasons
- */
 export async function runProductAudit({
   shop,
   admin,
   dryRun = false,
-  maxProducts = null, // e.g. 200 for manual quick runs
-  logScannedLimit = 200, // store only first N scanned items so DB doesn't explode
+  maxProducts = null,
+  logScannedLimit = 200,
 } = {}) {
   if (!shop) throw new Error("runProductAudit: missing `shop`");
   if (!admin) throw new Error("runProductAudit: missing `admin` client");
 
-  // Create run record
   const run = await prisma.productAuditRun.create({
     data: { shop, status: "running" },
   });
@@ -86,20 +73,14 @@ export async function runProductAudit({
   let checked = 0;
   let drafted = 0;
 
-  // Buffer only the first N scanned items for UI preview
   const scannedBuffer = [];
-
   let finalStatus = "completed";
   let finalError = null;
 
   try {
     while (true) {
       const resp = await admin.graphql(LIST, {
-        variables: {
-          first: 100,
-          after,
-          query: "status:active",
-        },
+        variables: { first: 100, after, query: "status:active" },
       });
 
       const json = await resp.json();
@@ -121,7 +102,6 @@ export async function runProductAudit({
 
         const shouldDraft = missingDescription || missingImages;
 
-        // sample for UI
         if (scannedBuffer.length < logScannedLimit) {
           scannedBuffer.push({
             runId: run.id,
@@ -139,17 +119,14 @@ export async function runProductAudit({
           });
         }
 
-        // Only draft ACTIVE products; we already query active, but keep it safe
         if (shouldDraft && p.status === "ACTIVE" && !dryRun) {
           const updResp = await admin.graphql(UPDATE, {
             variables: { input: { id: p.id, status: "DRAFT" } },
           });
-
           const updJson = await updResp.json();
           const errs = updJson?.data?.productUpdate?.userErrors || [];
 
           if (errs.length) {
-            // Keep going, but record the warning
             console.warn("Draft failed:", p.title, errs);
           } else {
             drafted++;
@@ -169,7 +146,6 @@ export async function runProductAudit({
           }
         }
 
-        // Stop early for manual runs
         if (maxProducts && checked >= maxProducts) {
           after = null;
           break;
@@ -186,17 +162,13 @@ export async function runProductAudit({
     finalError = String(e?.message || e);
     throw e;
   } finally {
-    // Always try write the scanned sample for UI (even if the run failed)
     try {
       await writeScannedSample(run.id, scannedBuffer);
     } catch (logErr) {
-      // If logging fails, still update run record with original error + logging error hint
       const msg = String(logErr?.message || logErr);
       console.warn("Failed writing scanned sample:", msg);
-
-      if (!finalError) finalError = `Scan logging failed: ${msg}`;
-      else finalError = `${finalError} | Scan logging failed: ${msg}`;
       finalStatus = "failed";
+      finalError = finalError ? `${finalError} | Scan logging failed: ${msg}` : msg;
     }
 
     await prisma.productAuditRun.update({
