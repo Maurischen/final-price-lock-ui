@@ -38,3 +38,27 @@ model PriceGuard {
 
   @@unique([shop, sku]) // one rule per SKU per shop
 }
+
+model EmailTemplate {
+  id        Int      @id @default(autoincrement())
+  label     String
+  subject   String
+  bodyHtml  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔴 This is the missing opposite side
+  logs EmailLog[]
+}
+
+model EmailLog {
+  id         Int      @id @default(autoincrement())
+  orderGid   String
+  templateId Int
+  subject    String
+  bodyHtml   String
+  sentAt     DateTime @default(now())
+
+  // Relation to EmailTemplate
+  template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
