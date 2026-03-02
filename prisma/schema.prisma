@@ -62,3 +62,55 @@ model EmailLog {
   // Relation to EmailTemplate
   template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
+model ProductAuditRun {
+  id         String   @id @default(cuid())
+  shop       String
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  checked    Int      @default(0)
+  drafted    Int      @default(0)
+  status     String   @default("running") // running | completed | failed
+  error      String?
+
+  items      ProductAuditItem[]
+  scans      ProductAuditScan[]   // ✅ relation added
+
+  @@index([shop])
+  @@index([startedAt])
+}
+
+model ProductAuditItem {
+  id                  String   @id @default(cuid())
+  runId               String
+  shop                String
+  productGid          String
+  title               String
+  prevStatus          String
+  newStatus           String
+  missingDescription  Boolean
+  missingImages       Boolean
+  createdAt           DateTime @default(now())
+
+  run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([shop])
+}
+
+model ProductAuditScan {
+  id                 String   @id @default(cuid())
+  runId              String
+  shop               String
+  productGid         String
+  title              String
+  status             String
+  missingDescription Boolean
+  missingImages      Boolean
+  actionTaken        String   // NONE | WOULD_DRAFT | DRAFT
+  createdAt          DateTime @default(now())
+
+  run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)  // ✅ relation added
+
+  @@index([runId])
+  @@index([shop])
+}
