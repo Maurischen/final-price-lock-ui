@@ -9,6 +9,18 @@ function stripHtmlToText(html = "") {
     .trim();
 }
 
+async function createManyInBatches(model, rows, batchSize = 200) {
+  if (!rows?.length) return;
+
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const batch = rows.slice(i, i + batchSize);
+    await model.createMany({
+      data: batch,
+      skipDuplicates: true,
+    });
+  }
+}
+
 /**
  * Runs an audit for ONE shop using the provided authenticated `admin` client.
  * - Scans ACTIVE products only
@@ -27,7 +39,6 @@ export async function runProductAudit({
   if (!shop) throw new Error("runProductAudit: missing `shop`");
   if (!admin) throw new Error("runProductAudit: missing `admin` client");
 
-  // Create run record
   const run = await prisma.productAuditRun.create({
     data: { shop, status: "running" },
   });
@@ -60,8 +71,10 @@ export async function runProductAudit({
   let checked = 0;
   let drafted = 0;
 
-  // We'll store a limited "scanned sample" for UI visibility
+  // Save only a limited sample for UI visibility (max logScannedLimit)
   const scannedBuffer = [];
+  // If you ever decide to bulk-insert changed items, buffer them too
+  const changedBuffer = [];
 
   try {
     while (true) {
@@ -69,7 +82,7 @@ export async function runProductAudit({
         variables: {
           first: 100,
           after,
-          query: "status:active", // ✅ only ACTIVE products
+          query: "status:active",
         },
       });
 
@@ -77,7 +90,6 @@ export async function runProductAudit({
       const products = json?.data?.products;
 
       if (!products) {
-        // Helpful debug info if Shopify returns something unexpected
         const errText =
           json?.errors?.map((e) => e.message).join("; ") ||
           json?.data?.errors ||
@@ -92,9 +104,9 @@ export async function runProductAudit({
         const missingDescription = descText.length === 0;
         const missingImages = (p.images?.edges || []).length === 0;
 
-        const shouldDraft = missingDescription || missingImages; // ✅ OR rule
+        const shouldDraft = missingDescription || missingImages;
 
-        // Log a sample of scanned products (first N only)
+        // log only first N scanned rows (sample)
         if (scannedBuffer.length < logScannedLimit) {
           scannedBuffer.push({
             runId: run.id,
@@ -113,38 +125,33 @@ export async function runProductAudit({
             const updResp = await admin.graphql(UPDATE, {
               variables: { input: { id: p.id, status: "DRAFT" } },
             });
+
             const updJson = await updResp.json();
             const errs = updJson?.data?.productUpdate?.userErrors || [];
 
             if (errs.length) {
-              // keep going, but note we couldn't change it
               console.warn("Draft failed:", p.title, errs);
             } else {
               drafted++;
 
-              // Log every product we actually changed
-              await prisma.productAuditItem.create({
-                data: {
-                  runId: run.id,
-                  shop,
-                  productGid: p.id,
-                  title: p.title,
-                  prevStatus: "ACTIVE",
-                  newStatus: "DRAFT",
-                  missingDescription,
-                  missingImages,
-                },
+              // You can keep this as single insert (fine), OR buffer and batch later.
+              // Buffering is safer if you ever expect hundreds/thousands drafted.
+              changedBuffer.push({
+                runId: run.id,
+                shop,
+                productGid: p.id,
+                title: p.title,
+                prevStatus: "ACTIVE",
+                newStatus: "DRAFT",
+                missingDescription,
+                missingImages,
               });
             }
-          } else {
-            // DRY RUN counts "would draft" as drafted? usually no.
-            // We'll NOT increment drafted in dry run.
           }
         }
 
-        // Optional: stop early for manual runs
+        // manual stop
         if (maxProducts && checked >= maxProducts) {
-          // Stop scanning further pages
           after = null;
           break;
         }
@@ -156,13 +163,11 @@ export async function runProductAudit({
       after = products.pageInfo.endCursor;
     }
 
-    // Save scanned sample in one go (if you add the ProductAuditScan model)
-    if (scannedBuffer.length) {
-      await prisma.productAuditScan.createMany({
-        data: scannedBuffer,
-        skipDuplicates: true,
-      });
-    }
+    // ✅ Write scanned sample in batches (prevents oversized createMany)
+    await createManyInBatches(prisma.productAuditScan, scannedBuffer, 200);
+
+    // ✅ Write changed items (if any) in batches (safe + fast)
+    await createManyInBatches(prisma.productAuditItem, changedBuffer, 200);
 
     await prisma.productAuditRun.update({
       where: { id: run.id },
@@ -177,15 +182,11 @@ export async function runProductAudit({
 
     return { runId: run.id, checked, drafted, dryRun };
   } catch (e) {
-    // Attempt to save scannedBuffer even on failure (useful for debugging)
+    // Try to save whatever we collected (best-effort)
     try {
-      if (scannedBuffer.length) {
-        await prisma.productAuditScan.createMany({
-          data: scannedBuffer,
-          skipDuplicates: true,
-        });
-      }
-    } catch (ignored) {
+      await createManyInBatches(prisma.productAuditScan, scannedBuffer, 200);
+      await createManyInBatches(prisma.productAuditItem, changedBuffer, 200);
+    } catch {
       // ignore secondary logging errors
     }
 
