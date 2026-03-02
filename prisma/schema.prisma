@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL") // <-- IMPORTANT: use a variable, not the file path
+  url      = env("DATABASE_URL") // IMPORTANT: use env var, not a hard file path
 }
 
 model Session {
@@ -47,7 +47,6 @@ model EmailTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 🔴 This is the missing opposite side
   logs EmailLog[]
 }
 
@@ -59,9 +58,9 @@ model EmailLog {
   bodyHtml   String
   sentAt     DateTime @default(now())
 
-  // Relation to EmailTemplate
   template EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
+
 model ProductAuditRun {
   id         String   @id @default(cuid())
   shop       String
@@ -72,27 +71,29 @@ model ProductAuditRun {
   status     String   @default("running") // running | completed | failed
   error      String?
 
-  items      ProductAuditItem[]
-  scans      ProductAuditScan[]   // ✅ relation added
+  items ProductAuditItem[]
+  scans ProductAuditScan[]
 
   @@index([shop])
   @@index([startedAt])
+  @@index([shop, startedAt]) // ✅ helpful for "latest run for shop"
 }
 
 model ProductAuditItem {
-  id                  String   @id @default(cuid())
-  runId               String
-  shop                String
-  productGid          String
-  title               String
-  prevStatus          String
-  newStatus           String
-  missingDescription  Boolean
-  missingImages       Boolean
-  createdAt           DateTime @default(now())
+  id                 String   @id @default(cuid())
+  runId              String
+  shop               String
+  productGid         String
+  title              String
+  prevStatus         String
+  newStatus          String
+  missingDescription Boolean
+  missingImages      Boolean
+  createdAt          DateTime @default(now())
 
   run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
+  @@unique([runId, productGid]) // ✅ prevents duplicates per run
   @@index([runId])
   @@index([shop])
 }
@@ -109,8 +110,9 @@ model ProductAuditScan {
   actionTaken        String   // NONE | WOULD_DRAFT | DRAFT
   createdAt          DateTime @default(now())
 
-  run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)  // ✅ relation added
+  run ProductAuditRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
+  @@unique([runId, productGid]) // ✅ makes skipDuplicates meaningful
   @@index([runId])
   @@index([shop])
 }
