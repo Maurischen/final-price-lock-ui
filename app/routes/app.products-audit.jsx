@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 
 import { authenticate } from "../shopify.server";
@@ -89,7 +89,9 @@ export default function ProductsAuditPage() {
   const { latestRun, latestChanged, latestScanned } = useLoaderData();
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
-
+  const [dryRun, setDryRun] = useState(false);
+  const [maxProducts, setMaxProducts] = useState("");
+  
   const isRunning = fetcher.state !== "idle";
 
   // ✅ Auto-refresh when the action finishes (success OR failure)
@@ -143,14 +145,19 @@ export default function ProductsAuditPage() {
                   <InlineStack gap="400" align="start">
                     <Checkbox
                       label="Dry run (log only, don't change products)"
-                      name="dryRun"
-                      defaultChecked={false}
+                      checked={dryRun}
+                      onChange={setDryRun}
                       disabled={isRunning}
-                    />
+                   />
+
+                    {/* Make sure the value posts with the form */}
+                    <input type="hidden" name="dryRun" value={dryRun ? "on" : "off"} />
 
                     <div style={{ maxWidth: 220 }}>
-                      <TextField
+                     <TextField
                         label="Max products (optional)"
+                        value={maxProducts}
+                        onChange={(value) => setMaxProducts(value)}
                         name="maxProducts"
                         type="number"
                         autoComplete="off"
