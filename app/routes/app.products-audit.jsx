@@ -1,8 +1,9 @@
-import { useFetcher, useLoaderData, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { runProductAudit } from "../services/productAudit.server";
-import { useEffect } from "react";
 
 import {
   Page,
@@ -19,6 +20,9 @@ import {
   Divider,
 } from "@shopify/polaris";
 
+/**
+ * Server loader (React Router v7 data router style)
+ */
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
 
@@ -39,13 +43,16 @@ export const loader = async ({ request }) => {
     ? await prisma.productAuditScan.findMany({
         where: { runId: latestRun.id },
         orderBy: { createdAt: "asc" },
-        take: 200, // show first 200 scanned samples
+        take: 200,
       })
     : [];
 
   return { latestRun, latestChanged, latestScanned };
 };
 
+/**
+ * Server action (runs when fetcher.Form posts)
+ */
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
 
@@ -58,11 +65,10 @@ export const action = async ({ request }) => {
       ? Number(maxProductsRaw)
       : null;
 
-  // Basic validation
   if (maxProducts !== null && (!Number.isFinite(maxProducts) || maxProducts <= 0)) {
-    return Response.json(
-      { ok: false, error: "Max products must be a positive number." },
-      { status: 400 }
+    return new Response(
+      JSON.stringify({ ok: false, error: "Max products must be a positive number." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
@@ -74,7 +80,9 @@ export const action = async ({ request }) => {
     logScannedLimit: 200,
   });
 
-  return Response.json({ ok: true, ...result });
+  return new Response(JSON.stringify({ ok: true, ...result }), {
+    headers: { "Content-Type": "application/json" },
+  });
 };
 
 export default function ProductsAuditPage() {
@@ -84,11 +92,12 @@ export default function ProductsAuditPage() {
 
   const isRunning = fetcher.state !== "idle";
 
+  // ✅ Auto-refresh when the action finishes (success OR failure)
   useEffect(() => {
-  if (fetcher.state === "idle" && fetcher.data) {
-    revalidator.revalidate();
-  }
-}, [fetcher.state, fetcher.data, revalidator]);
+    if (fetcher.state === "idle" && fetcher.data) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
 
   const changedRows = latestChanged.map((i) => [
     i.title,
@@ -102,7 +111,7 @@ export default function ProductsAuditPage() {
     s.status,
     s.missingDescription ? "Yes" : "No",
     s.missingImages ? "Yes" : "No",
-    s.actionTaken, // NONE | WOULD_DRAFT | DRAFT
+    s.actionTaken,
   ]);
 
   const actionResultBanner =
@@ -168,10 +177,14 @@ export default function ProductsAuditPage() {
                     Status: <b>{latestRun.status}</b> • Checked:{" "}
                     <b>{latestRun.checked}</b> • Drafted: <b>{latestRun.drafted}</b>
                   </Text>
-                  {latestRun.error && <Banner tone="critical">{latestRun.error}</Banner>}
+                  {latestRun.error && (
+                    <Banner tone="critical">{latestRun.error}</Banner>
+                  )}
                 </BlockStack>
               ) : (
-                <Banner tone="info">No audit runs yet. Click “Run audit now” to start.</Banner>
+                <Banner tone="info">
+                  No audit runs yet. Click “Run audit now” to start.
+                </Banner>
               )}
             </BlockStack>
           </Card>
