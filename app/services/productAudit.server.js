@@ -86,6 +86,8 @@ export async function runProductAudit({
   let after = null;
   let checked = 0;
   let drafted = 0;
+  let missingDescCount = 0;
+  let missingImgCount = 0;
 
   const scannedBuffer = [];
   let finalStatus = "completed";
@@ -115,6 +117,8 @@ export async function runProductAudit({
         const missingDescription = !hasMeaningfulText;
         const missingImages = (p.images?.edges || []).length === 0;
 
+        if (missingDescription) missingDescCount++;
+        if (missingImages) missingImgCount++;
         const shouldDraft = missingDescription || missingImages;
 
         if (scannedBuffer.length < logScannedLimit) {
@@ -185,7 +189,12 @@ export async function runProductAudit({
       finalStatus = "failed";
       finalError = finalError ? `${finalError} | Scan logging failed: ${msg}` : msg;
     }
-
+    console.log("AUDIT SUMMARY", {
+      checked,
+       drafted,
+       missingDescCount,
+      missingImgCount,
+    });
     await prisma.productAuditRun.update({
       where: { id: run.id },
       data: {
