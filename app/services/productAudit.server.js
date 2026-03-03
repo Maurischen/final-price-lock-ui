@@ -113,12 +113,9 @@ export async function runProductAudit({
         checked++;
 
         const descText = stripHtmlToText(p.descriptionHtml || "");
-        const hasMeaningfulText = /[A-Za-z0-9]/.test(descText);
-        const missingDescription = !hasMeaningfulText;
+        const missingDescription = descText.length < 30;
         const missingImages = (p.images?.edges || []).length === 0;
 
-        if (missingDescription) missingDescCount++;
-        if (missingImages) missingImgCount++;
         const shouldDraft = missingDescription || missingImages;
 
         if (scannedBuffer.length < logScannedLimit) {

@@ -72,8 +72,7 @@ export async function scanAndDraftProducts(
       checked++;
 
       const descText = stripHtmlToText(p.descriptionHtml || "");
-      const hasMeaningfulText = /[A-Za-z0-9]/.test(descText);
-      const missingDescription = !hasMeaningfulText;
+      const missingDescription = descText.length < 30;
       const missingImages = (p.images?.edges || []).length === 0;
 
       const shouldDraft = missingDescription || missingImages;
