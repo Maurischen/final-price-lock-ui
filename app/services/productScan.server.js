@@ -1,8 +1,22 @@
 function stripHtmlToText(html = "") {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+  return String(html)
+    // remove HTML comments (very common if people paste schema placeholders)
+    .replace(/<!--[\s\S]*?-->/g, " ")
+
+    // remove style/script blocks
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+
+    // convert common "empty" entities into space
+    .replace(/&nbsp;|&#160;|&zwnj;|&zwj;/gi, " ")
+
+    // remove tags
     .replace(/<[^>]+>/g, " ")
+
+    // remove zero-width + BOM characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+
+    // collapse whitespace
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -58,7 +72,8 @@ export async function scanAndDraftProducts(
       checked++;
 
       const descText = stripHtmlToText(p.descriptionHtml || "");
-      const missingDescription = descText.length === 0;
+      const hasMeaningfulText = /[A-Za-z0-9]/.test(descText);
+      const missingDescription = !hasMeaningfulText;
       const missingImages = (p.images?.edges || []).length === 0;
 
       const shouldDraft = missingDescription || missingImages;
