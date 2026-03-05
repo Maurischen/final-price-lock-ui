@@ -38,9 +38,6 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-/**
- * Server loader
- */
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -69,7 +66,6 @@ export const loader = async ({ request }) => {
     };
   }
 
-  // Totals + counts by actionTaken
   const [changedTotal, scannedTotal, actionCounts] = await Promise.all([
     prisma.productAuditItem.count({ where: { runId: latestRun.id } }),
     prisma.productAuditScan.count({ where: { runId: latestRun.id } }),
@@ -104,9 +100,6 @@ export const loader = async ({ request }) => {
   };
 };
 
-/**
- * Server action
- */
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
@@ -151,11 +144,8 @@ export default function ProductsAuditPage() {
 
   const isRunning = fetcher.state !== "idle";
 
-  // Auto-refresh when action finishes
   useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data) {
-      revalidator.revalidate();
-    }
+    if (fetcher.state === "idle" && fetcher.data) revalidator.revalidate();
   }, [fetcher.state, fetcher.data, revalidator]);
 
   const { scannedPage, changedPage, pageSize } = paging;
@@ -286,7 +276,6 @@ export default function ProductsAuditPage() {
           </Card>
         </Layout.Section>
 
-        {/* Actioned/problem table (from ProductAuditScan) */}
         <Layout.Section>
           <Card>
             <BlockStack gap="200">
@@ -316,7 +305,6 @@ export default function ProductsAuditPage() {
           </Card>
         </Layout.Section>
 
-        {/* Status-change table (from ProductAuditItem) */}
         <Layout.Section>
           <Card>
             <BlockStack gap="200">

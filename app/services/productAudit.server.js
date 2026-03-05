@@ -29,7 +29,6 @@ async function writeActionLogRows(runId, rows) {
   if (!rows.length) return;
 
   const chunks = chunkArray(rows, 50); // safe for SQLite variable limits
-
   for (const chunk of chunks) {
     await prisma.$transaction(
       chunk.map((row) => prisma.productAuditScan.create({ data: row }))
@@ -38,9 +37,10 @@ async function writeActionLogRows(runId, rows) {
 }
 
 /**
- * Find Online Store publication ID (required for unpublish).
+ * Get Online Store publication ID from env.
+ * Set ONLINE_STORE_PUBLICATION_ID to the "Online Store" publication GID.
  */
-async function getOnlineStorePublicationId(admin) {
+function getOnlineStorePublicationId() {
   const id = process.env.ONLINE_STORE_PUBLICATION_ID;
   if (!id) {
     throw new Error(
@@ -50,23 +50,6 @@ async function getOnlineStorePublicationId(admin) {
   return id;
 }
 
-  const resp = await admin.graphql(Q);
-  const json = await resp.json();
-
-  const pubs = json?.data?.publications?.nodes || [];
-  const online = pubs.find((p) => p.name === "Online Store");
-
-  if (!online?.id) {
-    throw new Error(
-      `Could not find "Online Store" publication. Found: ${pubs
-        .map((p) => p.name)
-        .join(", ")}`
-    );
-  }
-
-  return online.id;
-
-
 // --------- Main ---------
 
 export async function runProductAudit({
@@ -74,7 +57,7 @@ export async function runProductAudit({
   admin,
   dryRun = false,
   maxProducts = null,
-  actionLogLimit = 2000, // how many action rows to store for UI
+  actionLogLimit = 2000,
 } = {}) {
   if (!shop) throw new Error("runProductAudit: missing `shop`");
   if (!admin) throw new Error("runProductAudit: missing `admin` client");
@@ -97,7 +80,7 @@ export async function runProductAudit({
           resourcePublications(first: 50) {
             nodes {
               publication { id }
-            isPublished
+              isPublished
             }
           }
         }
@@ -117,7 +100,7 @@ export async function runProductAudit({
   const UNPUBLISH = `
     mutation PublishableUnpublish($id: ID!, $publicationId: ID!) {
       publishableUnpublish(id: $id, input: { publicationId: $publicationId }) {
-      userErrors { field message }
+        userErrors { field message }
       }
     }
   `;
@@ -127,7 +110,6 @@ export async function runProductAudit({
   let checked = 0;
   let drafted = 0;
 
-  // extra counters (not stored in ProductAuditRun schema, but logged/returned)
   let unpublished = 0;
   let alreadyDraft = 0;
   let errors = 0;
@@ -141,12 +123,9 @@ export async function runProductAudit({
   let finalStatus = "completed";
   let finalError = null;
 
-  // Fetch once per run
-  let onlineStorePublicationId = null;
+  const onlineStorePublicationId = getOnlineStorePublicationId();
 
   try {
-    onlineStorePublicationId = await getOnlineStorePublicationId(admin);
-
     while (true) {
       // ✅ ACTIVE ONLY
       const resp = await admin.graphql(LIST, {
@@ -166,7 +145,6 @@ export async function runProductAudit({
       for (const p of products.nodes) {
         checked++;
 
-        // ✅ 30-char rule
         const descText = stripHtmlToText(p.descriptionHtml || "");
         const missingDescription = descText.length < 30;
         const missingImages = (p.images?.edges || []).length === 0;
@@ -181,7 +159,6 @@ export async function runProductAudit({
         let actionTaken = "NONE";
 
         // 1) Draft if missing desc/images
-        // (Note: because we query ACTIVE only, p.status should be ACTIVE, but keep it safe.)
         if (shouldDraft) {
           if (p.status === "DRAFT") {
             actionTaken = "ALREADY_DRAFT";
@@ -193,18 +170,18 @@ export async function runProductAudit({
               const updResp = await admin.graphql(DRAFT, {
                 variables: { input: { id: p.id, status: "DRAFT" } },
               });
+
               const updJson = await updResp.json();
               const errs = updJson?.data?.productUpdate?.userErrors || [];
 
               if (errs.length) {
                 actionTaken = "ERROR";
                 errors++;
-                console.warn("Unpublish failed:", p.title, JSON.stringify(errs, null, 2));
+                console.warn("Draft failed:", p.title, JSON.stringify(errs, null, 2));
               } else {
                 actionTaken = "DRAFT";
                 drafted++;
 
-                // Keep detailed history for actual status changes
                 await prisma.productAuditItem.create({
                   data: {
                     runId: run.id,
@@ -242,13 +219,14 @@ export async function runProductAudit({
                   publicationId: onlineStorePublicationId,
                 },
               });
+
               const unpubJson = await unpubResp.json();
               const errs = unpubJson?.data?.publishableUnpublish?.userErrors || [];
 
               if (errs.length) {
                 actionTaken = "ERROR";
                 errors++;
-                console.warn("Unpublish failed:", p.title, errs);
+                console.warn("Unpublish failed:", p.title, JSON.stringify(errs, null, 2));
               } else {
                 actionTaken = "UNPUBLISHED_ZERO_STOCK";
                 unpublished++;
@@ -258,7 +236,6 @@ export async function runProductAudit({
         }
 
         // Store ONLY action/problem rows for UI
-        // (Unique constraint is fine: we only ever add one row per product per run.)
         if (actionTaken !== "NONE" && actionRows.length < actionLogLimit) {
           actionRows.push({
             runId: run.id,
@@ -294,7 +271,9 @@ export async function runProductAudit({
       const msg = String(logErr?.message || logErr);
       console.warn("Failed writing action log rows:", msg);
       finalStatus = "failed";
-      finalError = finalError ? `${finalError} | Action log write failed: ${msg}` : msg;
+      finalError = finalError
+        ? `${finalError} | Action log write failed: ${msg}`
+        : msg;
     }
 
     console.log("AUDIT SUMMARY", {
