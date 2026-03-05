@@ -41,13 +41,14 @@ async function writeActionLogRows(runId, rows) {
  * Find Online Store publication ID (required for unpublish).
  */
 async function getOnlineStorePublicationId(admin) {
-  const Q = `
-    query Publications {
-      publications(first: 50) {
-        nodes { id name }
-      }
-    }
-  `;
+  const id = process.env.ONLINE_STORE_PUBLICATION_ID;
+  if (!id) {
+    throw new Error(
+      'Missing ONLINE_STORE_PUBLICATION_ID env var. Set it to the "Online Store" publication GID.'
+    );
+  }
+  return id;
+}
 
   const resp = await admin.graphql(Q);
   const json = await resp.json();
@@ -64,7 +65,7 @@ async function getOnlineStorePublicationId(admin) {
   }
 
   return online.id;
-}
+
 
 // --------- Main ---------
 
@@ -95,8 +96,8 @@ export async function runProductAudit({
           images(first: 1) { edges { node { id } } }
           resourcePublications(first: 50) {
             nodes {
-              publication { id name }
-              isPublished
+              publication { id }
+            isPublished
             }
           }
         }
@@ -114,9 +115,9 @@ export async function runProductAudit({
   `;
 
   const UNPUBLISH = `
-    mutation Unpublish($id: ID!, $input: PublishableUnpublishInput!) {
-      publishableUnpublish(id: $id, input: $input) {
-        userErrors { field message }
+    mutation PublishableUnpublish($id: ID!, $publicationId: ID!) {
+      publishableUnpublish(id: $id, input: { publicationId: $publicationId }) {
+      userErrors { field message }
       }
     }
   `;
@@ -198,7 +199,7 @@ export async function runProductAudit({
               if (errs.length) {
                 actionTaken = "ERROR";
                 errors++;
-                console.warn("Draft failed:", p.title, errs);
+                console.warn("Unpublish failed:", p.title, JSON.stringify(errs, null, 2));
               } else {
                 actionTaken = "DRAFT";
                 drafted++;
@@ -238,7 +239,7 @@ export async function runProductAudit({
               const unpubResp = await admin.graphql(UNPUBLISH, {
                 variables: {
                   id: p.id,
-                  input: { publicationId: onlineStorePublicationId },
+                  publicationId: onlineStorePublicationId,
                 },
               });
               const unpubJson = await unpubResp.json();
