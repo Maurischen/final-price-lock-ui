@@ -1,7 +1,8 @@
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 
-// 30-char rule + robust stripper
+// --------- Helpers ---------
+
 function stripHtmlToText(html = "") {
   return String(html)
     .replace(/<!--[\s\S]*?-->/g, " ")
@@ -14,30 +15,17 @@ function stripHtmlToText(html = "") {
     .trim();
 }
 
-async function getOnlineStorePublicationId(admin) {
-  const Q = `
-    query Publications {
-      publications(first: 50) {
-        nodes { id name }
-      }
-    }
-  `;
-  const resp = await admin.graphql(Q);
-  const json = await resp.json();
-
-  const pubs = json?.data?.publications?.nodes || [];
-  const online = pubs.find((p) => p.name === "Online Store");
-
-  if (!online?.id) {
+function getOnlineStorePublicationId() {
+  const id = process.env.ONLINE_STORE_PUBLICATION_ID;
+  if (!id) {
     throw new Error(
-      `Could not find "Online Store" publication. Found: ${pubs
-        .map((p) => p.name)
-        .join(", ")}`
+      'Missing ONLINE_STORE_PUBLICATION_ID env var. Set it to the "Online Store" publication GID.'
     );
   }
-
-  return online.id;
+  return id;
 }
+
+// --------- Core Audit Logic ---------
 
 async function auditShop(admin) {
   const LIST = `
@@ -53,7 +41,7 @@ async function auditShop(admin) {
           images(first: 1) { edges { node { id } } }
           resourcePublications(first: 50) {
             nodes {
-              publication { id name }
+              publication { id }
               isPublished
             }
           }
@@ -72,14 +60,14 @@ async function auditShop(admin) {
   `;
 
   const UNPUBLISH = `
-    mutation Unpublish($id: ID!, $input: PublishableUnpublishInput!) {
-      publishableUnpublish(id: $id, input: $input) {
+    mutation PublishableUnpublish($id: ID!, $publicationId: ID!) {
+      publishableUnpublish(id: $id, input: { publicationId: $publicationId }) {
         userErrors { field message }
       }
     }
   `;
 
-  const onlineStorePublicationId = await getOnlineStorePublicationId(admin);
+  const onlineStorePublicationId = getOnlineStorePublicationId();
 
   let after = null;
 
@@ -91,16 +79,16 @@ async function auditShop(admin) {
   let missingImgCount = 0;
   let zeroStockCount = 0;
 
-  // Only ACTIVE products
   const productQuery = "status:active";
 
   while (true) {
     const resp = await admin.graphql(LIST, {
       variables: { first: 100, after, query: productQuery },
     });
-    const json = await resp.json();
 
+    const json = await resp.json();
     const products = json?.data?.products;
+
     if (!products) {
       const errText =
         json?.errors?.map((e) => e.message).join("; ") ||
@@ -112,7 +100,7 @@ async function auditShop(admin) {
       checked++;
 
       const descText = stripHtmlToText(p.descriptionHtml || "");
-      const missingDescription = descText.length < 30; // ✅ your rule
+      const missingDescription = descText.length < 30;
       const missingImages = (p.images?.edges || []).length === 0;
       const zeroStock = (p.totalInventory ?? 0) <= 0;
 
@@ -127,20 +115,20 @@ async function auditShop(admin) {
         const updResp = await admin.graphql(DRAFT, {
           variables: { input: { id: p.id, status: "DRAFT" } },
         });
-        const updJson = await updResp.json();
 
+        const updJson = await updResp.json();
         const errs = updJson?.data?.productUpdate?.userErrors || [];
+
         if (errs.length) {
-          console.warn("Draft failed:", p.title, errs);
+          console.warn("Draft failed:", p.title, JSON.stringify(errs, null, 2));
         } else {
           drafted++;
         }
 
-        // If we drafted it, no need to unpublish it too
         continue;
       }
 
-      // 2) Otherwise, unpublish from Online Store if zero stock
+      // 2) Otherwise unpublish from Online Store if zero stock
       if (zeroStock) {
         const onlinePub = (p.resourcePublications?.nodes || []).find(
           (rp) => rp.publication?.id === onlineStorePublicationId
@@ -148,19 +136,23 @@ async function auditShop(admin) {
 
         const isPublishedOnOnlineStore = onlinePub?.isPublished === true;
 
-        // Avoid wasting API calls
         if (isPublishedOnOnlineStore) {
           const unpubResp = await admin.graphql(UNPUBLISH, {
             variables: {
               id: p.id,
-              input: { publicationId: onlineStorePublicationId },
+              publicationId: onlineStorePublicationId,
             },
           });
+
           const unpubJson = await unpubResp.json();
           const errs = unpubJson?.data?.publishableUnpublish?.userErrors || [];
 
           if (errs.length) {
-            console.warn("Unpublish failed:", p.title, errs);
+            console.warn(
+              "Unpublish failed:",
+              p.title,
+              JSON.stringify(errs, null, 2)
+            );
           } else {
             unpublished++;
           }
@@ -182,9 +174,11 @@ async function auditShop(admin) {
   };
 }
 
+// --------- Cron Route ---------
+
 export const loader = async ({ request }) => {
-  // Protect route
   const secret = request.headers.get("x-cron-secret");
+
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
@@ -195,6 +189,7 @@ export const loader = async ({ request }) => {
   });
 
   const results = [];
+
   let totalChecked = 0;
   let totalDrafted = 0;
   let totalUnpublished = 0;
@@ -211,7 +206,8 @@ export const loader = async ({ request }) => {
 
       results.push({ shop, ok: true, ...r });
 
-      await new Promise((r) => setTimeout(r, 300));
+      // small delay to be gentle on rate limits
+      await new Promise((resolve) => setTimeout(resolve, 300));
     } catch (e) {
       results.push({ shop, ok: false, error: String(e?.message || e) });
     }
