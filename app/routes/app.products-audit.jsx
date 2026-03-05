@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   useFetcher,
   useLoaderData,
@@ -39,7 +39,7 @@ function clamp(n, min, max) {
 }
 
 /**
- * Server loader (React Router v7 data router style)
+ * Server loader
  */
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -47,7 +47,11 @@ export const loader = async ({ request }) => {
 
   const scannedPage = toInt(url.searchParams.get("scannedPage"), 1);
   const changedPage = toInt(url.searchParams.get("changedPage"), 1);
-  const pageSize = clamp(toInt(url.searchParams.get("pageSize"), DEFAULT_PAGE_SIZE), 1, MAX_PAGE_SIZE);
+  const pageSize = clamp(
+    toInt(url.searchParams.get("pageSize"), DEFAULT_PAGE_SIZE),
+    1,
+    MAX_PAGE_SIZE
+  );
 
   const latestRun = await prisma.productAuditRun.findFirst({
     where: { shop: session.shop },
@@ -61,13 +65,19 @@ export const loader = async ({ request }) => {
       latestScanned: [],
       totals: { changed: 0, scanned: 0 },
       paging: { scannedPage, changedPage, pageSize },
+      actionCounts: [],
     };
   }
 
-  // Totals (so we can show proper paging)
-  const [changedTotal, scannedTotal] = await Promise.all([
+  // Totals + counts by actionTaken
+  const [changedTotal, scannedTotal, actionCounts] = await Promise.all([
     prisma.productAuditItem.count({ where: { runId: latestRun.id } }),
     prisma.productAuditScan.count({ where: { runId: latestRun.id } }),
+    prisma.productAuditScan.groupBy({
+      by: ["actionTaken"],
+      where: { runId: latestRun.id },
+      _count: { actionTaken: true },
+    }),
   ]);
 
   const latestChanged = await prisma.productAuditItem.findMany({
@@ -79,7 +89,7 @@ export const loader = async ({ request }) => {
 
   const latestScanned = await prisma.productAuditScan.findMany({
     where: { runId: latestRun.id },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     skip: (scannedPage - 1) * pageSize,
     take: pageSize,
   });
@@ -90,11 +100,12 @@ export const loader = async ({ request }) => {
     latestScanned,
     totals: { changed: changedTotal, scanned: scannedTotal },
     paging: { scannedPage, changedPage, pageSize },
+    actionCounts,
   };
 };
 
 /**
- * Server action (runs when fetcher.Form posts)
+ * Server action
  */
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -119,7 +130,7 @@ export const action = async ({ request }) => {
     admin,
     dryRun,
     maxProducts,
-    logScannedLimit: 200, // still controls how many you WRITE per run; pagination reads from DB
+    actionLogLimit: 2000,
   });
 
   return new Response(JSON.stringify({ ok: true, ...result }), {
@@ -128,7 +139,9 @@ export const action = async ({ request }) => {
 };
 
 export default function ProductsAuditPage() {
-  const { latestRun, latestChanged, latestScanned, totals, paging } = useLoaderData();
+  const { latestRun, latestChanged, latestScanned, totals, paging, actionCounts } =
+    useLoaderData();
+
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,7 +151,7 @@ export default function ProductsAuditPage() {
 
   const isRunning = fetcher.state !== "idle";
 
-  // ✅ Auto-refresh when the action finishes (success OR failure)
+  // Auto-refresh when action finishes
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data) {
       revalidator.revalidate();
@@ -149,6 +162,13 @@ export default function ProductsAuditPage() {
 
   const changedPageCount = Math.max(1, Math.ceil((totals?.changed || 0) / pageSize));
   const scannedPageCount = Math.max(1, Math.ceil((totals?.scanned || 0) / pageSize));
+
+  const actionMap = useMemo(() => {
+    return (actionCounts || []).reduce((acc, row) => {
+      acc[row.actionTaken] = row._count.actionTaken;
+      return acc;
+    }, {});
+  }, [actionCounts]);
 
   const changedRows = latestChanged.map((i) => [
     i.title,
@@ -168,8 +188,8 @@ export default function ProductsAuditPage() {
   const actionResultBanner =
     fetcher.data?.ok ? (
       <Banner tone="success">
-        Run complete. Checked {fetcher.data.checked} products and drafted{" "}
-        {fetcher.data.drafted}
+        Run complete. Checked {fetcher.data.checked}, drafted {fetcher.data.drafted}, unpublished{" "}
+        {fetcher.data.unpublished}, errors {fetcher.data.errors}
         {fetcher.data.dryRun ? " (dry run: no changes applied)." : "."}
       </Banner>
     ) : fetcher.data?.error ? (
@@ -180,7 +200,6 @@ export default function ProductsAuditPage() {
     (key, value) => {
       const next = new URLSearchParams(searchParams);
       next.set(key, String(value));
-      // keep pageSize stable unless you decide to change it
       if (!next.get("pageSize")) next.set("pageSize", String(pageSize));
       setSearchParams(next, { replace: true });
     },
@@ -194,8 +213,9 @@ export default function ProductsAuditPage() {
           <Card>
             <BlockStack gap="300">
               <Text as="p" variant="bodyMd">
-                Scans <b>ACTIVE</b> products only. Any product missing a description{" "}
-                <b>or</b> images will be moved to <b>DRAFT</b>.
+                Scans <b>ACTIVE</b> products only. Products missing a description or images are moved
+                to <b>DRAFT</b>. Products with <b>zero stock</b> are automatically{" "}
+                <b>unpublished from the Online Store</b>.
               </Text>
 
               {actionResultBanner}
@@ -210,7 +230,6 @@ export default function ProductsAuditPage() {
                       disabled={isRunning}
                     />
 
-                    {/* Ensure it posts */}
                     <input type="hidden" name="dryRun" value={dryRun ? "on" : "off"} />
 
                     <div style={{ maxWidth: 220 }}>
@@ -240,10 +259,24 @@ export default function ProductsAuditPage() {
                   <Text as="h3" variant="headingMd">
                     Latest run summary
                   </Text>
+
                   <Text as="p" variant="bodyMd">
-                    Status: <b>{latestRun.status}</b> • Checked:{" "}
-                    <b>{latestRun.checked}</b> • Drafted: <b>{latestRun.drafted}</b>
+                    Status: <b>{latestRun.status}</b> • Checked: <b>{latestRun.checked}</b> • Drafted:{" "}
+                    <b>{latestRun.drafted}</b>
                   </Text>
+
+                  <InlineStack gap="400" wrap>
+                    <Text as="p" variant="bodySm">
+                      <b>Unpublished (zero stock):</b> {actionMap.UNPUBLISHED_ZERO_STOCK || 0}
+                    </Text>
+                    <Text as="p" variant="bodySm">
+                      <b>Already draft:</b> {actionMap.ALREADY_DRAFT || 0}
+                    </Text>
+                    <Text as="p" variant="bodySm">
+                      <b>Errors:</b> {actionMap.ERROR || 0}
+                    </Text>
+                  </InlineStack>
+
                   {latestRun.error && <Banner tone="critical">{latestRun.error}</Banner>}
                 </BlockStack>
               ) : (
@@ -253,15 +286,15 @@ export default function ProductsAuditPage() {
           </Card>
         </Layout.Section>
 
-        {/* Scanned table */}
+        {/* Actioned/problem table (from ProductAuditScan) */}
         <Layout.Section>
           <Card>
             <BlockStack gap="200">
               <Text as="h3" variant="headingMd">
-                Scanned products (last run)
+                Problem / actioned products (last run)
               </Text>
               <Text as="p" variant="bodySm">
-                Showing page <b>{scannedPage}</b> of <b>{scannedPageCount}</b> • Total scanned:{" "}
+                Showing page <b>{scannedPage}</b> of <b>{scannedPageCount}</b> • Total actioned:{" "}
                 <b>{totals?.scanned || 0}</b> • Page size: <b>{pageSize}</b>
               </Text>
 
@@ -283,7 +316,7 @@ export default function ProductsAuditPage() {
           </Card>
         </Layout.Section>
 
-        {/* Changed table */}
+        {/* Status-change table (from ProductAuditItem) */}
         <Layout.Section>
           <Card>
             <BlockStack gap="200">

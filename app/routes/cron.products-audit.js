@@ -1,33 +1,68 @@
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 
-// OR rule helpers
+// 30-char rule + robust stripper
 function stripHtmlToText(html = "") {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+  return String(html)
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/&nbsp;|&#160;|&zwnj;|&zwj;/gi, " ")
     .replace(/<[^>]+>/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+async function getOnlineStorePublicationId(admin) {
+  const Q = `
+    query Publications {
+      publications(first: 50) {
+        nodes { id name }
+      }
+    }
+  `;
+  const resp = await admin.graphql(Q);
+  const json = await resp.json();
+
+  const pubs = json?.data?.publications?.nodes || [];
+  const online = pubs.find((p) => p.name === "Online Store");
+
+  if (!online?.id) {
+    throw new Error(
+      `Could not find "Online Store" publication. Found: ${pubs
+        .map((p) => p.name)
+        .join(", ")}`
+    );
+  }
+
+  return online.id;
+}
+
 async function auditShop(admin) {
   const LIST = `
-    query Products($first: Int!, $after: String) {
-      products(first: $first, after: $after) {
+    query Products($first: Int!, $after: String, $query: String!) {
+      products(first: $first, after: $after, query: $query) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id
           title
           status
           descriptionHtml
+          totalInventory
           images(first: 1) { edges { node { id } } }
+          resourcePublications(first: 50) {
+            nodes {
+              publication { id name }
+              isPublished
+            }
+          }
         }
       }
     }
   `;
 
-  const UPDATE = `
+  const DRAFT = `
     mutation UpdateProduct($input: ProductInput!) {
       productUpdate(input: $input) {
         product { id status }
@@ -36,29 +71,60 @@ async function auditShop(admin) {
     }
   `;
 
+  const UNPUBLISH = `
+    mutation Unpublish($id: ID!, $input: PublishableUnpublishInput!) {
+      publishableUnpublish(id: $id, input: $input) {
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const onlineStorePublicationId = await getOnlineStorePublicationId(admin);
+
   let after = null;
+
   let checked = 0;
   let drafted = 0;
+  let unpublished = 0;
+
+  let missingDescCount = 0;
+  let missingImgCount = 0;
+  let zeroStockCount = 0;
+
+  // Only ACTIVE products
+  const productQuery = "status:active";
 
   while (true) {
-    const resp = await admin.graphql(LIST, { variables: { first: 100, after } });
+    const resp = await admin.graphql(LIST, {
+      variables: { first: 100, after, query: productQuery },
+    });
     const json = await resp.json();
 
     const products = json?.data?.products;
-    if (!products) break;
+    if (!products) {
+      const errText =
+        json?.errors?.map((e) => e.message).join("; ") ||
+        "No products payload returned";
+      throw new Error(`Product list query failed: ${errText}`);
+    }
 
     for (const p of products.nodes) {
       checked++;
 
       const descText = stripHtmlToText(p.descriptionHtml || "");
-      const missingDescription = descText.length === 0;
+      const missingDescription = descText.length < 30; // ✅ your rule
       const missingImages = (p.images?.edges || []).length === 0;
+      const zeroStock = (p.totalInventory ?? 0) <= 0;
 
-      const shouldDraft = missingDescription || missingImages; // ✅ OR rule
+      if (missingDescription) missingDescCount++;
+      if (missingImages) missingImgCount++;
+      if (zeroStock) zeroStockCount++;
 
-      // Safety: only move ACTIVE -> DRAFT
+      const shouldDraft = missingDescription || missingImages;
+
+      // 1) Draft if missing desc/images
       if (shouldDraft && p.status === "ACTIVE") {
-        const updResp = await admin.graphql(UPDATE, {
+        const updResp = await admin.graphql(DRAFT, {
           variables: { input: { id: p.id, status: "DRAFT" } },
         });
         const updJson = await updResp.json();
@@ -69,6 +135,36 @@ async function auditShop(admin) {
         } else {
           drafted++;
         }
+
+        // If we drafted it, no need to unpublish it too
+        continue;
+      }
+
+      // 2) Otherwise, unpublish from Online Store if zero stock
+      if (zeroStock) {
+        const onlinePub = (p.resourcePublications?.nodes || []).find(
+          (rp) => rp.publication?.id === onlineStorePublicationId
+        );
+
+        const isPublishedOnOnlineStore = onlinePub?.isPublished === true;
+
+        // Avoid wasting API calls
+        if (isPublishedOnOnlineStore) {
+          const unpubResp = await admin.graphql(UNPUBLISH, {
+            variables: {
+              id: p.id,
+              input: { publicationId: onlineStorePublicationId },
+            },
+          });
+          const unpubJson = await unpubResp.json();
+          const errs = unpubJson?.data?.publishableUnpublish?.userErrors || [];
+
+          if (errs.length) {
+            console.warn("Unpublish failed:", p.title, errs);
+          } else {
+            unpublished++;
+          }
+        }
       }
     }
 
@@ -76,17 +172,23 @@ async function auditShop(admin) {
     after = products.pageInfo.endCursor;
   }
 
-  return { checked, drafted };
+  return {
+    checked,
+    drafted,
+    unpublished,
+    missingDescCount,
+    missingImgCount,
+    zeroStockCount,
+  };
 }
 
 export const loader = async ({ request }) => {
-  // ✅ Protect this route so nobody else can hit it
+  // Protect route
   const secret = request.headers.get("x-cron-secret");
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // Get all distinct shops from stored sessions
   const shops = await prisma.session.findMany({
     distinct: ["shop"],
     select: { shop: true },
@@ -95,20 +197,20 @@ export const loader = async ({ request }) => {
   const results = [];
   let totalChecked = 0;
   let totalDrafted = 0;
+  let totalUnpublished = 0;
 
   for (const { shop } of shops) {
     try {
-      // ✅ This is the key change: get an Admin client without a user request
       const { admin } = await unauthenticated.admin(shop);
 
-      const { checked, drafted } = await auditShop(admin);
+      const r = await auditShop(admin);
 
-      totalChecked += checked;
-      totalDrafted += drafted;
+      totalChecked += r.checked;
+      totalDrafted += r.drafted;
+      totalUnpublished += r.unpublished;
 
-      results.push({ shop, ok: true, checked, drafted });
+      results.push({ shop, ok: true, ...r });
 
-      // Gentle pause between shops
       await new Promise((r) => setTimeout(r, 300));
     } catch (e) {
       results.push({ shop, ok: false, error: String(e?.message || e) });
@@ -120,6 +222,7 @@ export const loader = async ({ request }) => {
     shops: results.length,
     totalChecked,
     totalDrafted,
+    totalUnpublished,
     results,
   });
 };
