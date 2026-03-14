@@ -17,7 +17,7 @@ uid = "2ab145c8-62f8-c030-3331-79a79b20977848e5bd06"
 
 [[extensions.targeting]]
 module = "./src/Checkout.jsx"
-target = "purchase.checkout.pickup-location-list.render-after"
+target = "purchase.checkout.pickup-location-list.render-before"
 
 [extensions.capabilities]
 # Gives your extension access to directly query Shopify’s storefront API.
