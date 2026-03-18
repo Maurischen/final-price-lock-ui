@@ -6,14 +6,9 @@ export default function extension() {
 }
 
 function Extension() {
-  const deliverySelectionGroups =
-    shopify.deliverySelectionGroups?.value || [];
-
-  const appMetafields =
-    shopify.appMetafields?.value || [];
-
-  const lines =
-    shopify.lines?.value || [];
+  const deliverySelectionGroups = shopify.deliverySelectionGroups?.value || [];
+  const appMetafields = shopify.appMetafields?.value || [];
+  const lines = shopify.lines?.value || [];
 
   if (!deliverySelectionGroups.length) {
     return null;
@@ -27,6 +22,11 @@ function Extension() {
     if (!Number.isNaN(base)) return base;
 
     return 0;
+  };
+
+  const getNumericProductId = (gid) => {
+    const match = String(gid || '').match(/(\d+)$/);
+    return match ? match[1] : null;
   };
 
   const hasSplitShipping = deliverySelectionGroups.length > 1;
@@ -51,13 +51,14 @@ function Extension() {
           String(entry?.metafield?.value).toLowerCase() === 'true'
         );
       })
-      .map((entry) => entry?.target?.id)
+      .map((entry) => String(entry?.target?.id))
       .filter(Boolean),
   );
 
   const hasBulkyItem = lines.some((line) => {
-    const productId = line?.merchandise?.product?.id;
-    return productId && bulkyProductIds.has(productId);
+    const productGid = line?.merchandise?.product?.id;
+    const numericProductId = getNumericProductId(productGid);
+    return numericProductId && bulkyProductIds.has(numericProductId);
   });
 
   let heading = 'Shipping notice';
