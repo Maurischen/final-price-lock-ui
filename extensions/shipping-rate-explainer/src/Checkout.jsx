@@ -7,73 +7,63 @@ export default function extension() {
 
 function Extension() {
   const deliveryGroups = shopify.deliveryGroups?.value || [];
-  const deliverySelectionGroups = shopify.deliverySelectionGroups?.value || [];
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
-  const getAmount = (item) => {
-    const discounted = Number(item?.costAfterDiscounts?.amount ?? NaN);
-    if (!Number.isNaN(discounted)) return discounted;
-
-    const base = Number(item?.cost?.amount ?? NaN);
-    if (!Number.isNaN(base)) return base;
-
-    return 0;
-  };
+  if (!deliveryGroups.length) {
+    return null;
+  }
 
   const getNumericProductId = (gid) => {
     const match = String(gid || '').match(/(\d+)$/);
     return match ? match[1] : null;
   };
 
-  const bulkyMetafields = appMetafields.filter((entry) => {
-    return (
-      entry?.metafield?.namespace === 'custom' &&
-      entry?.metafield?.key === 'is_bulky_shipping_item'
-    );
-  });
-
   const bulkyProductIds = new Set(
-    bulkyMetafields
-      .filter((entry) => String(entry?.metafield?.value).toLowerCase() === 'true')
+    appMetafields
+      .filter((entry) => {
+        return (
+          entry?.target?.type === 'product' &&
+          entry?.metafield?.namespace === 'custom' &&
+          entry?.metafield?.key === 'is_bulky_shipping_item' &&
+          String(entry?.metafield?.value).toLowerCase() === 'true'
+        );
+      })
       .map((entry) => String(entry?.target?.id))
       .filter(Boolean),
   );
 
-  const cartProductIds = lines
-    .map((line) => getNumericProductId(line?.merchandise?.product?.id))
-    .filter(Boolean);
+  const hasBulkyItem = lines.some((line) => {
+    const productGid = line?.merchandise?.product?.id;
+    const numericProductId = getNumericProductId(productGid);
+    return numericProductId && bulkyProductIds.has(numericProductId);
+  });
 
-  const hasBulkyItem = cartProductIds.some((id) => bulkyProductIds.has(id));
-
-  const selectedSelectionGroups = deliverySelectionGroups.filter(
-    (group) => group?.selected,
-  );
-
-  const groupsToEvaluate =
-    selectedSelectionGroups.length > 0
-      ? selectedSelectionGroups
-      : deliverySelectionGroups;
-
-  const amounts = groupsToEvaluate.map((group) => getAmount(group));
   const hasSplitShipping = deliveryGroups.length > 1;
-  const hasPaidSelection = groupsToEvaluate.some((group) => getAmount(group) > 0.01);
-  const hasFreeSelection = groupsToEvaluate.some((group) => getAmount(group) <= 0.01);
+
+  let heading = '';
+  let message = '';
+
+  if (hasSplitShipping && hasBulkyItem) {
+    heading = 'Why am I still being charged shipping?';
+    message =
+      'Your order is being shipped in separate consignments, and oversized or bulky items require separate courier handling. Because of this, additional shipping charges may still apply even when part of the order qualifies for free shipping.';
+  } else if (hasSplitShipping) {
+    heading = 'Split shipping notice';
+    message =
+      'Your order is being fulfilled in separate shipments, which is why more than one shipping charge may apply at checkout.';
+  } else if (hasBulkyItem) {
+    heading = 'Why am I still being charged shipping?';
+    message =
+      'Although this order may qualify for free shipping, oversized or bulky items require special courier handling and are charged separately.';
+  } else {
+    return null;
+  }
 
   return (
-    <s-banner heading="Shipping Debug" tone="warning">
+    <s-banner heading={heading} tone="info">
       <s-stack gap="base">
-        <s-text>deliveryGroups: {String(deliveryGroups.length)}</s-text>
-        <s-text>deliverySelectionGroups: {String(deliverySelectionGroups.length)}</s-text>
-        <s-text>selectedGroups: {String(selectedSelectionGroups.length)}</s-text>
-        <s-text>amounts: {JSON.stringify(amounts)}</s-text>
-        <s-text>hasSplitShipping: {String(hasSplitShipping)}</s-text>
-        <s-text>hasPaidSelection: {String(hasPaidSelection)}</s-text>
-        <s-text>hasFreeSelection: {String(hasFreeSelection)}</s-text>
-        <s-text>cartProductIds: {JSON.stringify(cartProductIds)}</s-text>
-        <s-text>bulkyProductIds: {JSON.stringify([...bulkyProductIds])}</s-text>
-        <s-text>bulkyMetafieldCount: {String(bulkyMetafields.length)}</s-text>
-        <s-text>hasBulkyItem: {String(hasBulkyItem)}</s-text>
+        <s-text>{message}</s-text>
       </s-stack>
     </s-banner>
   );
