@@ -77,14 +77,14 @@ function Extension() {
   let message =
     'Shipping charges apply based on the selected delivery methods for this order.';
 
-  if (hasSplitShipping && hasFreeSelection && hasBulkyItem) {
+  if (hasBulkyItem && hasFreeSelection && hasPaidSelection) {
     heading = 'Why am I still being charged shipping?';
     message =
-      'Part of your order qualifies for free shipping. However, bulky items require separate courier handling, so an additional shipping charge still applies.';
+      'Your order qualifies for free shipping, but oversized or bulky items require separate courier handling. Because of this, an oversize shipping fee still applies to part of the order.';
   } else if (hasSplitShipping && hasBulkyItem) {
-    heading = 'Split shipping and bulky-item notice';
+    heading = 'Split shipping and oversized-item notice';
     message =
-      'Your order is being shipped in separate consignments, and bulky items require separate courier handling. This is why multiple shipping charges may apply.';
+      'Your order is being shipped in separate consignments, and oversized or bulky items require separate courier handling. This is why multiple shipping charges may apply.';
   } else if (hasSplitShipping && hasFreeSelection && hasPaidSelection) {
     heading = 'Why am I still being charged shipping?';
     message =
@@ -94,9 +94,9 @@ function Extension() {
     message =
       'Your order is being fulfilled in separate shipments, which is why more than one shipping charge may apply at checkout.';
   } else if (hasBulkyItem && hasPaidSelection) {
-    heading = 'Bulky-item courier notice';
+    heading = 'Oversized-item courier notice';
     message =
-      'This order includes an item that requires separate courier handling due to its size or handling requirements, so a shipping fee applies.';
+      'This order includes an oversized or bulky item that requires separate courier handling, so a shipping fee applies.';
   } else {
     return null;
   }
