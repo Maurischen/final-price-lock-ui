@@ -11,10 +11,6 @@ function Extension() {
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
-  if (!deliveryGroups.length) {
-    return null;
-  }
-
   const getAmount = (item) => {
     const discounted = Number(item?.costAfterDiscounts?.amount ?? NaN);
     if (!Number.isNaN(discounted)) return discounted;
@@ -30,27 +26,25 @@ function Extension() {
     return match ? match[1] : null;
   };
 
+  const bulkyMetafields = appMetafields.filter((entry) => {
+    return (
+      entry?.metafield?.namespace === 'custom' &&
+      entry?.metafield?.key === 'is_bulky_shipping_item'
+    );
+  });
+
   const bulkyProductIds = new Set(
-    appMetafields
-      .filter((entry) => {
-        return (
-          entry?.target?.type === 'product' &&
-          entry?.metafield?.namespace === 'custom' &&
-          entry?.metafield?.key === 'is_bulky_shipping_item' &&
-          String(entry?.metafield?.value).toLowerCase() === 'true'
-        );
-      })
+    bulkyMetafields
+      .filter((entry) => String(entry?.metafield?.value).toLowerCase() === 'true')
       .map((entry) => String(entry?.target?.id))
       .filter(Boolean),
   );
 
-  const hasBulkyItem = lines.some((line) => {
-    const productGid = line?.merchandise?.product?.id;
-    const numericProductId = getNumericProductId(productGid);
-    return numericProductId && bulkyProductIds.has(numericProductId);
-  });
+  const cartProductIds = lines
+    .map((line) => getNumericProductId(line?.merchandise?.product?.id))
+    .filter(Boolean);
 
-  const hasSplitShipping = deliveryGroups.length > 1;
+  const hasBulkyItem = cartProductIds.some((id) => bulkyProductIds.has(id));
 
   const selectedSelectionGroups = deliverySelectionGroups.filter(
     (group) => group?.selected,
@@ -61,50 +55,25 @@ function Extension() {
       ? selectedSelectionGroups
       : deliverySelectionGroups;
 
-  const hasPaidSelection = groupsToEvaluate.some(
-    (group) => getAmount(group) > 0.01,
-  );
-
-  const hasFreeSelection = groupsToEvaluate.some(
-    (group) => getAmount(group) <= 0.01,
-  );
-
-  if (!hasSplitShipping && !hasPaidSelection && !hasBulkyItem) {
-    return null;
-  }
-
-  let heading = 'Shipping notice';
-  let message =
-    'Shipping charges apply based on the selected delivery methods for this order.';
-
-  if (hasBulkyItem && hasFreeSelection && hasPaidSelection) {
-    heading = 'Why am I still being charged shipping?';
-    message =
-      'Your order qualifies for free shipping, but oversized or bulky items require separate courier handling. Because of this, an oversize shipping fee still applies to part of the order.';
-  } else if (hasSplitShipping && hasBulkyItem) {
-    heading = 'Split shipping and oversized-item notice';
-    message =
-      'Your order is being shipped in separate consignments, and oversized or bulky items require separate courier handling. This is why multiple shipping charges may apply.';
-  } else if (hasSplitShipping && hasFreeSelection && hasPaidSelection) {
-    heading = 'Why am I still being charged shipping?';
-    message =
-      'Part of your order qualifies for free shipping, but other items are being shipped separately and still incur a courier charge. This is why an additional shipping fee appears at checkout.';
-  } else if (hasSplitShipping) {
-    heading = 'Split shipping notice';
-    message =
-      'Your order is being fulfilled in separate shipments, which is why more than one shipping charge may apply at checkout.';
-  } else if (hasBulkyItem && hasPaidSelection) {
-    heading = 'Oversized-item courier notice';
-    message =
-      'This order includes an oversized or bulky item that requires separate courier handling, so a shipping fee applies.';
-  } else {
-    return null;
-  }
+  const amounts = groupsToEvaluate.map((group) => getAmount(group));
+  const hasSplitShipping = deliveryGroups.length > 1;
+  const hasPaidSelection = groupsToEvaluate.some((group) => getAmount(group) > 0.01);
+  const hasFreeSelection = groupsToEvaluate.some((group) => getAmount(group) <= 0.01);
 
   return (
-    <s-banner heading={heading} tone="info">
+    <s-banner heading="Shipping Debug" tone="warning">
       <s-stack gap="base">
-        <s-text>{message}</s-text>
+        <s-text>deliveryGroups: {String(deliveryGroups.length)}</s-text>
+        <s-text>deliverySelectionGroups: {String(deliverySelectionGroups.length)}</s-text>
+        <s-text>selectedGroups: {String(selectedSelectionGroups.length)}</s-text>
+        <s-text>amounts: {JSON.stringify(amounts)}</s-text>
+        <s-text>hasSplitShipping: {String(hasSplitShipping)}</s-text>
+        <s-text>hasPaidSelection: {String(hasPaidSelection)}</s-text>
+        <s-text>hasFreeSelection: {String(hasFreeSelection)}</s-text>
+        <s-text>cartProductIds: {JSON.stringify(cartProductIds)}</s-text>
+        <s-text>bulkyProductIds: {JSON.stringify([...bulkyProductIds])}</s-text>
+        <s-text>bulkyMetafieldCount: {String(bulkyMetafields.length)}</s-text>
+        <s-text>hasBulkyItem: {String(hasBulkyItem)}</s-text>
       </s-stack>
     </s-banner>
   );
