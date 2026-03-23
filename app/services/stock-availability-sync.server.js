@@ -3,6 +3,7 @@ export async function syncStockAvailability({
   onlineLocationIds = [],
   storeLocationIds = [],
   dryRun = true,
+  enableDeletes = false,
 }) {
   const onlineSet = new Set(onlineLocationIds);
   const storeSet = new Set(storeLocationIds);
@@ -193,6 +194,15 @@ export async function syncStockAvailability({
       );
 
       const mutationResult = await mutationResponse.json();
+
+      if (mutationResult.errors) {
+        console.error(
+          "GraphQL top-level set error:",
+          JSON.stringify(mutationResult, null, 2),
+        );
+        throw new Error(`GraphQL set error: ${JSON.stringify(mutationResult.errors)}`);
+      }
+
       const errors = mutationResult?.data?.metafieldsSet?.userErrors || [];
 
       if (errors.length) {
@@ -201,7 +211,7 @@ export async function syncStockAvailability({
     }
   }
 
-  if (!dryRun && deletes.length > 0) {
+  if (!dryRun && enableDeletes && deletes.length > 0) {
     const deleteChunks = [];
     for (let i = 0; i < deletes.length; i += 25) {
       deleteChunks.push(deletes.slice(i, i + 25));
@@ -236,9 +246,26 @@ export async function syncStockAvailability({
       );
 
       const deleteResult = await deleteResponse.json();
+
+      if (deleteResult.errors) {
+        console.error(
+          "GraphQL top-level delete error:",
+          JSON.stringify(deleteResult, null, 2),
+        );
+        throw new Error(`GraphQL delete error: ${JSON.stringify(deleteResult.errors)}`);
+      }
+
       const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
 
       if (errors.length) {
+        console.error(
+          "Metafields delete userErrors:",
+          JSON.stringify(errors, null, 2),
+        );
+        console.error(
+          "Delete batch sample:",
+          JSON.stringify(batch.slice(0, 5), null, 2),
+        );
         throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
       }
     }

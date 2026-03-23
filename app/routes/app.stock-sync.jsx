@@ -62,18 +62,28 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const dryRun = formData.get("dryRun") === "true";
+  try {
+    const { admin } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const dryRun = formData.get("dryRun") === "true";
 
-  const result = await syncStockAvailability({
-    admin,
-    onlineLocationIds: ONLINE_LOCATION_IDS,
-    storeLocationIds: STORE_LOCATION_IDS,
-    dryRun,
-  });
+    const result = await syncStockAvailability({
+      admin,
+      onlineLocationIds: ONLINE_LOCATION_IDS,
+      storeLocationIds: STORE_LOCATION_IDS,
+      dryRun,
+      enableDeletes: false,
+    });
 
-  return result;
+    return { ok: true, ...result };
+  } catch (error) {
+    console.error("Stock sync action failed:", error);
+
+    return {
+      ok: false,
+      error: error?.message || "Unknown stock sync error",
+    };
+  }
 };
 
 export default function StockSyncPage() {
