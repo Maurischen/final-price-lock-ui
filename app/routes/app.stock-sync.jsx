@@ -16,10 +16,10 @@ const STORE_LOCATION_NAMES = [
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
 
-  return json({
+  return {
     onlineLocations: ONLINE_LOCATION_NAMES,
     storeLocations: STORE_LOCATION_NAMES,
-  });
+  };
 };
 
 export const action = async ({ request }) => {
@@ -34,7 +34,7 @@ export const action = async ({ request }) => {
     dryRun,
   });
 
-  return json(result);
+  return result;
 };
 
 export default function StockSyncPage() {
@@ -62,7 +62,7 @@ export default function StockSyncPage() {
       </fetcher.Form>
 
       {fetcher.data ? (
-        <pre style={{ marginTop: 20, whiteSpace: "pre-wrap" }}>
+        <pre style={{ marginTop: "20px", whiteSpace: "pre-wrap" }}>
           {JSON.stringify(fetcher.data, null, 2)}
         </pre>
       ) : null}
