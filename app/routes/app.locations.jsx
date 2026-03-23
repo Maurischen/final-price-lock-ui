@@ -1,8 +1,7 @@
-import { useLoaderData } from "@remix-run/react";
-import { json } from "@remix-run/node";
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 
-export const loader = async ({ request }) => {
+export async function loader({ request }) {
   try {
     const { admin } = await authenticate.admin(request);
 
@@ -22,23 +21,22 @@ export const loader = async ({ request }) => {
     `);
 
     const result = await response.json();
-
-    console.log("LOCATIONS RESPONSE:", JSON.stringify(result, null, 2));
-
     const locations = result?.data?.locations?.edges?.map((edge) => edge.node) || [];
 
-    return json({ ok: true, locations });
+    return {
+      ok: true,
+      locations,
+    };
   } catch (error) {
     console.error("LOCATIONS LOADER ERROR:", error);
-    return json(
-      {
-        ok: false,
-        error: error?.message || "Unknown error",
-      },
-      { status: 500 }
-    );
+
+    return {
+      ok: false,
+      error: error?.message || "Unknown error",
+      locations: [],
+    };
   }
-};
+}
 
 export default function AppLocations() {
   const data = useLoaderData();
@@ -50,7 +48,6 @@ export default function AppLocations() {
       {!data.ok ? (
         <div>
           <p><strong>Error:</strong> {data.error}</p>
-          <p>Check your server logs for the full error output.</p>
         </div>
       ) : (
         <div>

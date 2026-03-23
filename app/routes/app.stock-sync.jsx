@@ -1,5 +1,4 @@
-import { useLoaderData, useFetcher } from "@remix-run/react";
-import { json } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "react-router";
 import { authenticate } from "../shopify.server";
 import { syncStockAvailability } from "../services/stock-availability-sync.server";
 
