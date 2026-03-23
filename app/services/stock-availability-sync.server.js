@@ -12,12 +12,19 @@ export async function syncStockAvailability({
   let hasNextPage = true;
   let after = null;
   let processedVariants = 0;
+  let processedActiveVariants = 0;
+  let processedProductsSeen = 0;
+  let pageCount = 0;
+  let writtenBatches = 0;
 
   while (hasNextPage) {
-    const response = await admin.graphql(`
+    pageCount++;
+
+    const response = await admin.graphql(
+      `
       #graphql
-      query ProductVariantsPage($first: Int!, $after: String) {
-        productVariants(first: $first, after: $after) {
+      query ProductVariantsPage($first: Int!, $after: String, $query: String) {
+        productVariants(first: $first, after: $after, query: $query) {
           edges {
             cursor
             node {
@@ -26,6 +33,7 @@ export async function syncStockAvailability({
               product {
                 id
                 title
+                status
               }
               inventoryItem {
                 id
@@ -52,12 +60,15 @@ export async function syncStockAvailability({
           }
         }
       }
-    `, {
-      variables: {
-        first: 100,
-        after,
+    `,
+      {
+        variables: {
+          first: 100,
+          after,
+          query: "status:active",
+        },
       },
-    });
+    );
 
     const result = await response.json();
     const conn = result?.data?.productVariants;
@@ -70,6 +81,12 @@ export async function syncStockAvailability({
       const variant = edge.node;
       processedVariants++;
 
+      if (!variant?.product || variant.product.status !== "ACTIVE") {
+        continue;
+      }
+
+      processedActiveVariants++;
+
       const productId = variant.product.id;
       const title = variant.product.title;
 
@@ -80,12 +97,15 @@ export async function syncStockAvailability({
           onlineQty: 0,
           storeQty: 0,
         });
+        processedProductsSeen++;
       }
 
       const state = productMap.get(productId);
       const inventoryItem = variant.inventoryItem;
 
-      if (!inventoryItem || !inventoryItem.tracked) continue;
+      if (!inventoryItem || !inventoryItem.tracked) {
+        continue;
+      }
 
       for (const levelEdge of inventoryItem.inventoryLevels.edges) {
         const level = levelEdge.node;
@@ -136,7 +156,10 @@ export async function syncStockAvailability({
     }
 
     for (const batch of chunks) {
-      const mutationResponse = await admin.graphql(`
+      writtenBatches++;
+
+      const mutationResponse = await admin.graphql(
+        `
         #graphql
         mutation SetMetafields($metafields: [MetafieldsSetInput!]!) {
           metafieldsSet(metafields: $metafields) {
@@ -153,11 +176,13 @@ export async function syncStockAvailability({
             }
           }
         }
-      `, {
-        variables: {
-          metafields: batch,
+      `,
+        {
+          variables: {
+            metafields: batch,
+          },
         },
-      });
+      );
 
       const mutationResult = await mutationResponse.json();
       const errors = mutationResult?.data?.metafieldsSet?.userErrors || [];
@@ -170,9 +195,13 @@ export async function syncStockAvailability({
 
   return {
     dryRun,
+    pageCount,
     processedVariants,
-    processedProducts: productMap.size,
+    processedActiveVariants,
+    processedProductsSeen,
+    processedProductsWithStockAvailability: updates.length,
     updatesPrepared: updates.length,
+    writtenBatches,
     sample: updates.slice(0, 10),
   };
 }
