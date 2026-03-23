@@ -52,21 +52,44 @@ const STORE_LOCATION_IDS = [
 ];
 
 export async function loader({ request }) {
-  const url = new URL(request.url);
-  const secret = url.searchParams.get("secret");
+  try {
+    const url = new URL(request.url);
+    const secret = url.searchParams.get("secret");
 
-  if (secret !== process.env.CRON_SECRET) {
-    return new Response("Unauthorized", { status: 401 });
+    if (secret !== process.env.CRON_SECRET) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const { admin } = await authenticate.admin(request);
+
+    const result = await syncStockAvailability({
+      admin,
+      onlineLocationIds: ONLINE_LOCATION_IDS,
+      storeLocationIds: STORE_LOCATION_IDS,
+      dryRun: false,
+      enableDeletes: true,
+    });
+
+    return new Response(JSON.stringify({ ok: true, ...result }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (error) {
+    console.error("CRON STOCK SYNC ERROR:", error);
+
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: error?.message || "Unknown cron sync error",
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
   }
-
-  const { admin } = await authenticate.admin(request);
-
-  const result = await syncStockAvailability({
-    admin,
-    onlineLocationIds: ONLINE_LOCATION_IDS,
-    storeLocationIds: STORE_LOCATION_IDS,
-    dryRun: false,
-  });
-
-  return result;
 }
