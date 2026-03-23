@@ -211,65 +211,64 @@ export async function syncStockAvailability({
     }
   }
 
-  if (!dryRun && enableDeletes && deletes.length > 0) {
-    const deleteChunks = [];
-    for (let i = 0; i < deletes.length; i += 25) {
-      deleteChunks.push(deletes.slice(i, i + 25));
-    }
+ if (!dryRun && enableDeletes && deletes.length > 0) {
+  const deleteChunks = [];
+  for (let i = 0; i < deletes.length; i += 25) {
+    deleteChunks.push(deletes.slice(i, i + 25));
+  }
 
-    for (const batch of deleteChunks) {
-      deletedBatches++;
+  for (const batch of deleteChunks) {
+    deletedBatches++;
 
-      const deleteResponse = await admin.graphql(
-        `
-        #graphql
-        mutation DeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
-          metafieldsDelete(metafields: $metafields) {
-            deletedMetafields {
-              ownerId
-              namespace
-              key
-            }
-            userErrors {
-              field
-              message
-              code
-            }
+    const deleteResponse = await admin.graphql(
+      `
+      #graphql
+      mutation DeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
+        metafieldsDelete(metafields: $metafields) {
+          deletedMetafields {
+            ownerId
+            namespace
+            key
+          }
+          userErrors {
+            field
+            message
           }
         }
-        `,
-        {
-          variables: {
-            metafields: batch,
-          },
+      }
+      `,
+      {
+        variables: {
+          metafields: batch,
         },
+      },
+    );
+
+    const deleteResult = await deleteResponse.json();
+
+    if (deleteResult.errors) {
+      console.error(
+        "GraphQL top-level delete error:",
+        JSON.stringify(deleteResult, null, 2),
       );
+      throw new Error(`GraphQL delete error: ${JSON.stringify(deleteResult.errors)}`);
+    }
 
-      const deleteResult = await deleteResponse.json();
+    const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
 
-      if (deleteResult.errors) {
-        console.error(
-          "GraphQL top-level delete error:",
-          JSON.stringify(deleteResult, null, 2),
-        );
-        throw new Error(`GraphQL delete error: ${JSON.stringify(deleteResult.errors)}`);
-      }
-
-      const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
-
-      if (errors.length) {
-        console.error(
-          "Metafields delete userErrors:",
-          JSON.stringify(errors, null, 2),
-        );
-        console.error(
-          "Delete batch sample:",
-          JSON.stringify(batch.slice(0, 5), null, 2),
-        );
-        throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
-      }
+    if (errors.length) {
+      console.error(
+        "Metafields delete userErrors:",
+        JSON.stringify(errors, null, 2),
+      );
+      console.error(
+        "Delete batch sample:",
+        JSON.stringify(batch.slice(0, 5), null, 2),
+      );
+      throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
     }
   }
+}
 
   return {
     dryRun,
