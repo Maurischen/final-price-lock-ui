@@ -72,7 +72,7 @@ export const action = async ({ request }) => {
       onlineLocationIds: ONLINE_LOCATION_IDS,
       storeLocationIds: STORE_LOCATION_IDS,
       dryRun,
-      enableDeletes: false,
+      enableDeletes: true,
     });
 
     return { ok: true, ...result };
@@ -90,21 +90,46 @@ export default function StockSyncPage() {
   const data = useLoaderData();
   const fetcher = useFetcher();
 
+  const isRunning =
+    fetcher.state === "submitting" || fetcher.state === "loading";
+
   return (
     <div style={{ padding: "20px" }}>
       <h1>Stock Availability Sync</h1>
 
-      <p><strong>Online location IDs:</strong> {data.onlineLocationIds.join(", ")}</p>
-      <p><strong>Store location IDs:</strong> {data.storeLocationIds.join(", ")}</p>
+      <p>
+        <strong>Online location IDs:</strong> {data.onlineLocationIds.join(", ")}
+      </p>
+      <p>
+        <strong>Store location IDs:</strong> {data.storeLocationIds.join(", ")}
+      </p>
 
       <fetcher.Form method="post">
-        <button type="submit" name="dryRun" value="true" style={{ marginRight: 12 }}>
-          Dry run
+        <button
+          type="submit"
+          name="dryRun"
+          value="true"
+          style={{ marginRight: 12 }}
+          disabled={isRunning}
+        >
+          {isRunning ? "Running..." : "Dry run"}
         </button>
-        <button type="submit" name="dryRun" value="false">
-          Run sync
+
+        <button
+          type="submit"
+          name="dryRun"
+          value="false"
+          disabled={isRunning}
+        >
+          {isRunning ? "Running..." : "Run sync"}
         </button>
       </fetcher.Form>
+
+      {isRunning && (
+        <div style={{ marginTop: "20px", fontWeight: "bold" }}>
+          Sync in progress... please wait.
+        </div>
+      )}
 
       {fetcher.data ? (
         <pre style={{ marginTop: "20px", whiteSpace: "pre-wrap" }}>
