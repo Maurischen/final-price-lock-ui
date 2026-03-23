@@ -3,7 +3,6 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
 // Shopify Function for SKU Price Lock (Matrix live store)
-// ✅ use the raw ID exactly as GraphiQL returns it
 const FUNCTION_ID = "019aca46-a224-7d77-a875-7af11c39ff14";
 
 const CREATE_SKU_PRICE_LOCK = `
@@ -39,7 +38,6 @@ export const action = async ({ request }) => {
         title: "SKU Price Lock",
         functionId: FUNCTION_ID,
         startsAt: new Date().toISOString(),
-        // ✅ required for the new `discounts` API
         discountClasses: ["PRODUCT"],
         combinesWith: {
           orderDiscounts: true,
@@ -72,10 +70,9 @@ export const action = async ({ request }) => {
       ok: false,
       errors: [
         {
-          message:
-            `Server Error: ${
-              error.message || "An unexpected server error occurred."
-            }`,
+          message: `Server Error: ${
+            error.message || "An unexpected server error occurred."
+          }`,
         },
       ],
     };
@@ -123,17 +120,28 @@ export default function AppIndex() {
         )}
       </s-section>
 
-      {/* 🔹 New section: link to Price Guard admin page */}
       <s-section>
         <s-paragraph>
           Need to change or add locked prices for specific SKUs? Open your{" "}
           <strong>Price Guard Rules</strong> admin panel below.
         </s-paragraph>
 
-        {/* Simple GET to navigate to the new route */}
         <Form method="get" action="/app/price-guard">
           <s-button variant="secondary" type="submit">
             Open Price Guard Rules
+          </s-button>
+        </Form>
+      </s-section>
+
+      <s-section>
+        <s-paragraph>
+          Need to update the <strong>Stock Availability</strong> metafield based
+          on online and store stock? Open the sync tool below.
+        </s-paragraph>
+
+        <Form method="get" action="/app/stock-sync">
+          <s-button variant="secondary" type="submit">
+            Open Stock Availability Sync
           </s-button>
         </Form>
       </s-section>

@@ -16,6 +16,7 @@ export async function syncStockAvailability({
   let processedProductsSeen = 0;
   let pageCount = 0;
   let writtenBatches = 0;
+  let deletedBatches = 0;
 
   while (hasNextPage) {
     pageCount++;
@@ -60,7 +61,7 @@ export async function syncStockAvailability({
           }
         }
       }
-    `,
+      `,
       {
         variables: {
           first: 100,
@@ -126,6 +127,7 @@ export async function syncStockAvailability({
   }
 
   const updates = [];
+  const deletes = [];
 
   for (const [, product] of productMap) {
     let value = null;
@@ -138,24 +140,30 @@ export async function syncStockAvailability({
       value = "Available In Store";
     }
 
-    if (!value) continue;
-
-    updates.push({
-      ownerId: product.productId,
-      namespace: "custom",
-      key: "stock_availability",
-      type: "single_line_text_field",
-      value,
-    });
+    if (value) {
+      updates.push({
+        ownerId: product.productId,
+        namespace: "custom",
+        key: "stock_availability",
+        type: "single_line_text_field",
+        value,
+      });
+    } else {
+      deletes.push({
+        ownerId: product.productId,
+        namespace: "custom",
+        key: "stock_availability",
+      });
+    }
   }
 
   if (!dryRun && updates.length > 0) {
-    const chunks = [];
+    const updateChunks = [];
     for (let i = 0; i < updates.length; i += 25) {
-      chunks.push(updates.slice(i, i + 25));
+      updateChunks.push(updates.slice(i, i + 25));
     }
 
-    for (const batch of chunks) {
+    for (const batch of updateChunks) {
       writtenBatches++;
 
       const mutationResponse = await admin.graphql(
@@ -176,7 +184,7 @@ export async function syncStockAvailability({
             }
           }
         }
-      `,
+        `,
         {
           variables: {
             metafields: batch,
@@ -193,15 +201,60 @@ export async function syncStockAvailability({
     }
   }
 
+  if (!dryRun && deletes.length > 0) {
+    const deleteChunks = [];
+    for (let i = 0; i < deletes.length; i += 25) {
+      deleteChunks.push(deletes.slice(i, i + 25));
+    }
+
+    for (const batch of deleteChunks) {
+      deletedBatches++;
+
+      const deleteResponse = await admin.graphql(
+        `
+        #graphql
+        mutation DeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
+          metafieldsDelete(metafields: $metafields) {
+            deletedMetafields {
+              ownerId
+              namespace
+              key
+            }
+            userErrors {
+              field
+              message
+              code
+            }
+          }
+        }
+        `,
+        {
+          variables: {
+            metafields: batch,
+          },
+        },
+      );
+
+      const deleteResult = await deleteResponse.json();
+      const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
+
+      if (errors.length) {
+        throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
+      }
+    }
+  }
+
   return {
     dryRun,
     pageCount,
     processedVariants,
     processedActiveVariants,
     processedProductsSeen,
-    processedProductsWithStockAvailability: updates.length,
     updatesPrepared: updates.length,
+    deletesPrepared: deletes.length,
     writtenBatches,
-    sample: updates.slice(0, 10),
+    deletedBatches,
+    sampleUpdates: updates.slice(0, 10),
+    sampleDeletes: deletes.slice(0, 10),
   };
 }
