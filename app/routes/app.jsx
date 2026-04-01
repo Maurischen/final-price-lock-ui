@@ -29,6 +29,7 @@ export default function App() {
           <s-link href="/app/stock-sync">Stock Availability Sync</s-link>
           <s-link href="/app/locations">Locations</s-link>
           <s-link href="/app/additional">Additional page</s-link>
+          <s-link href="/app/zero-price-audit">Zero Price Audit</s-link>
         </s-app-nav>
         <Outlet />
       </ShopifyAppProvider>
