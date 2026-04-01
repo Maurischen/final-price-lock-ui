@@ -1,5 +1,3 @@
-// app/routes/app.zero-price-audit.csv.jsx
-
 import { authenticate } from "../shopify.server";
 import {
   buildZeroPriceAuditCsv,
@@ -9,12 +7,9 @@ import {
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
   const result = await runZeroPriceAudit(admin);
-
   const csv = buildZeroPriceAuditCsv(result.flaggedRows);
 
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
   return new Response(csv, {
     status: 200,

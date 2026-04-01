@@ -1,111 +1,79 @@
-// app/routes/app.zero-price-audit.jsx
-
-import { json } from "@shopify/shopify-app-react-router/server";
-import { useLoaderData, Link } from "react-router"
-import {
-  Badge,
-  BlockStack,
-  Button,
-  Card,
-  InlineStack,
-  Layout,
-  Page,
-  Text,
-} from "@shopify/polaris";
+import { Link, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { runZeroPriceAudit } from "../services/zero-price-audit.server.js";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
-  const result = await runZeroPriceAudit(admin);
-
-  return json(result);
+  return await runZeroPriceAudit(admin);
 }
 
 export default function ZeroPriceAuditPage() {
   const data = useLoaderData();
 
   return (
-    <Page
-      title="Zero Price Audit"
-      primaryAction={{
-        content: "Download CSV",
-        url: "/app/zero-price-audit.csv",
-      }}
-    >
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <InlineStack align="space-between">
-                <Text as="h2" variant="headingMd">
-                  Audit Summary
-                </Text>
+    <s-page heading="Zero Price Audit">
+      <s-section>
+        <s-stack direction="block" gap="base">
+          <s-text fontWeight="bold">Audit Summary</s-text>
+          <s-paragraph>
+            Active products checked: <strong>{data.checkedProducts}</strong>
+          </s-paragraph>
+          <s-paragraph>
+            Variants checked: <strong>{data.checkedVariants}</strong>
+          </s-paragraph>
+          <s-paragraph>
+            Zero-priced published variants found:{" "}
+            <strong>{data.flaggedCount}</strong>
+          </s-paragraph>
 
-                <Badge tone={data.flaggedCount > 0 ? "critical" : "success"}>
-                  {data.flaggedCount} flagged
-                </Badge>
-              </InlineStack>
+          <div>
+            <Link to="/app/zero-price-audit.csv">
+              <s-button variant="primary">Download CSV</s-button>
+            </Link>
+          </div>
+        </s-stack>
+      </s-section>
 
-              <Text as="p" variant="bodyMd">
-                Active products checked: {data.checkedProducts}
-              </Text>
+      <s-section>
+        <s-paragraph>
+          This tool scans for <strong>active and published products</strong> with
+          <strong> zero-priced variants</strong>.
+        </s-paragraph>
+      </s-section>
 
-              <Text as="p" variant="bodyMd">
-                Variants checked: {data.checkedVariants}
-              </Text>
+      <s-section>
+        <s-stack direction="block" gap="base">
+          <s-text fontWeight="bold">Preview</s-text>
 
-              <Text as="p" variant="bodyMd">
-                Zero-priced published variants found: {data.flaggedCount}
-              </Text>
-
-              <div>
-                <Link to="/app/zero-price-audit.csv">
-                  <Button variant="primary">Download CSV</Button>
-                </Link>
-              </div>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h2" variant="headingMd">
-                Preview
-              </Text>
-
-              {data.flaggedRows.length === 0 ? (
-                <Text as="p" variant="bodyMd">
-                  No active and published zero-priced products were found.
-                </Text>
-              ) : (
-                data.flaggedRows.slice(0, 25).map((row) => (
-                  <Card key={row.variantId} roundedAbove="sm">
-                    <BlockStack gap="100">
-                      <Text as="p" variant="bodyMd" fontWeight="semibold">
-                        {row.productTitle}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        Variant: {row.variantTitle}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        SKU: {row.sku || "-"}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        Price: {row.price}
-                      </Text>
-                      <Text as="p" variant="bodySm">
-                        Handle: {row.handle}
-                      </Text>
-                    </BlockStack>
-                  </Card>
-                ))
-              )}
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+          {data.flaggedRows.length === 0 ? (
+            <s-paragraph>
+              No active and published zero-priced products were found.
+            </s-paragraph>
+          ) : (
+            data.flaggedRows.slice(0, 25).map((row) => (
+              <s-box
+                key={row.variantId}
+                padding="base"
+                border="base"
+                borderRadius="base"
+              >
+                <s-stack direction="block" gap="tight">
+                  <s-paragraph>
+                    <strong>{row.productTitle}</strong>
+                  </s-paragraph>
+                  <s-paragraph>Variant: {row.variantTitle}</s-paragraph>
+                  <s-paragraph>SKU: {row.sku || "-"}</s-paragraph>
+                  <s-paragraph>Price: {row.price}</s-paragraph>
+                  <s-paragraph>Handle: {row.handle}</s-paragraph>
+                  <s-paragraph>
+                    Published Count: {row.publishedCount}
+                  </s-paragraph>
+                </s-stack>
+              </s-box>
+            ))
+          )}
+        </s-stack>
+      </s-section>
+    </s-page>
   );
 }
