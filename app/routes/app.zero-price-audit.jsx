@@ -13,7 +13,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { runZeroPriceAudit } from "../../services/zero-price-audit.server";
+import { runZeroPriceAudit } from "../services/zero-price-audit.server.js";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);

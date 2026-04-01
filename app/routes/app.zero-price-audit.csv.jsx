@@ -4,7 +4,7 @@ import { authenticate } from "../shopify.server";
 import {
   buildZeroPriceAuditCsv,
   runZeroPriceAudit,
-} from "../../services/zero-price-audit.server";
+} from "../services/zero-price-audit.server.js";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
