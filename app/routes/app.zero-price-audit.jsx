@@ -1,7 +1,7 @@
 // app/routes/app.zero-price-audit.jsx
 
-import { json } from "@remix-run/node";
-import { Link, useLoaderData } from "@remix-run/react";
+import { json } from "@shopify/shopify-app-react-router/server";
+import { useLoaderData, Link } from "react-router"
 import {
   Badge,
   BlockStack,
