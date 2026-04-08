@@ -1,12 +1,12 @@
 export async function syncStockAvailability({
   admin,
   onlineLocationIds = [],
-  storeLocationIds = [],
+  storeLocations = {},
   dryRun = true,
   enableDeletes = false,
 }) {
   const onlineSet = new Set(onlineLocationIds);
-  const storeSet = new Set(storeLocationIds);
+  const storeSet = new Set(Object.keys(storeLocations));
 
   const productMap = new Map();
 
@@ -98,6 +98,7 @@ export async function syncStockAvailability({
           title,
           onlineQty: 0,
           storeQty: 0,
+          availableStores: new Set(),
         });
         processedProductsSeen++;
       }
@@ -119,6 +120,10 @@ export async function syncStockAvailability({
           state.onlineQty += qty;
         } else if (storeSet.has(locationId)) {
           state.storeQty += qty;
+
+          if (qty > 0 && storeLocations[locationId]) {
+            state.availableStores.add(storeLocations[locationId]);
+          }
         }
       }
     }
@@ -129,31 +134,50 @@ export async function syncStockAvailability({
 
   const updates = [];
   const deletes = [];
+  const storeDeletes = [];
 
   for (const [, product] of productMap) {
-    let value = null;
+    let stockAvailabilityValue = null;
 
     if (product.onlineQty > 0 && product.storeQty > 0) {
-      value = "Available Online & In Store";
+      stockAvailabilityValue = "Available Online & In Store";
     } else if (product.onlineQty > 0) {
-      value = "Available Online";
+      stockAvailabilityValue = "Available Online";
     } else if (product.storeQty > 0) {
-      value = "Available In Store";
+      stockAvailabilityValue = "Available In Store";
     }
 
-    if (value) {
+    if (stockAvailabilityValue) {
       updates.push({
         ownerId: product.productId,
         namespace: "custom",
         key: "stock_availability",
         type: "single_line_text_field",
-        value,
+        value: stockAvailabilityValue,
       });
     } else {
       deletes.push({
         ownerId: product.productId,
         namespace: "custom",
         key: "stock_availability",
+      });
+    }
+
+    const availableStores = Array.from(product.availableStores).sort();
+
+    if (availableStores.length > 0) {
+      updates.push({
+        ownerId: product.productId,
+        namespace: "custom",
+        key: "available_stores",
+        type: "list.single_line_text_field",
+        value: JSON.stringify(availableStores),
+      });
+    } else {
+      storeDeletes.push({
+        ownerId: product.productId,
+        namespace: "custom",
+        key: "available_stores",
       });
     }
   }
@@ -181,7 +205,6 @@ export async function syncStockAvailability({
             userErrors {
               field
               message
-              code
             }
           }
         }
@@ -211,64 +234,66 @@ export async function syncStockAvailability({
     }
   }
 
- if (!dryRun && enableDeletes && deletes.length > 0) {
-  const deleteChunks = [];
-  for (let i = 0; i < deletes.length; i += 25) {
-    deleteChunks.push(deletes.slice(i, i + 25));
-  }
+  const allDeletes = [...deletes, ...storeDeletes];
 
-  for (const batch of deleteChunks) {
-    deletedBatches++;
+  if (!dryRun && enableDeletes && allDeletes.length > 0) {
+    const deleteChunks = [];
+    for (let i = 0; i < allDeletes.length; i += 25) {
+      deleteChunks.push(allDeletes.slice(i, i + 25));
+    }
 
-    const deleteResponse = await admin.graphql(
-      `
-      #graphql
-      mutation DeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
-        metafieldsDelete(metafields: $metafields) {
-          deletedMetafields {
-            ownerId
-            namespace
-            key
-          }
-          userErrors {
-            field
-            message
+    for (const batch of deleteChunks) {
+      deletedBatches++;
+
+      const deleteResponse = await admin.graphql(
+        `
+        #graphql
+        mutation DeleteMetafields($metafields: [MetafieldIdentifierInput!]!) {
+          metafieldsDelete(metafields: $metafields) {
+            deletedMetafields {
+              ownerId
+              namespace
+              key
+            }
+            userErrors {
+              field
+              message
+            }
           }
         }
-      }
-      `,
-      {
-        variables: {
-          metafields: batch,
+        `,
+        {
+          variables: {
+            metafields: batch,
+          },
         },
-      },
-    );
-
-    const deleteResult = await deleteResponse.json();
-
-    if (deleteResult.errors) {
-      console.error(
-        "GraphQL top-level delete error:",
-        JSON.stringify(deleteResult, null, 2),
       );
-      throw new Error(`GraphQL delete error: ${JSON.stringify(deleteResult.errors)}`);
-    }
 
-    const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
+      const deleteResult = await deleteResponse.json();
 
-    if (errors.length) {
-      console.error(
-        "Metafields delete userErrors:",
-        JSON.stringify(errors, null, 2),
-      );
-      console.error(
-        "Delete batch sample:",
-        JSON.stringify(batch.slice(0, 5), null, 2),
-      );
-      throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
+      if (deleteResult.errors) {
+        console.error(
+          "GraphQL top-level delete error:",
+          JSON.stringify(deleteResult, null, 2),
+        );
+        throw new Error(`GraphQL delete error: ${JSON.stringify(deleteResult.errors)}`);
+      }
+
+      const errors = deleteResult?.data?.metafieldsDelete?.userErrors || [];
+
+      if (errors.length) {
+        console.error(
+          "Metafields delete userErrors:",
+          JSON.stringify(errors, null, 2),
+        );
+        console.error(
+          "Delete batch sample:",
+          JSON.stringify(batch.slice(0, 5), null, 2),
+        );
+        throw new Error(`Metafield delete failed: ${JSON.stringify(errors)}`);
+      }
     }
   }
-}
 
   return {
     dryRun,
@@ -277,10 +302,10 @@ export async function syncStockAvailability({
     processedActiveVariants,
     processedProductsSeen,
     updatesPrepared: updates.length,
-    deletesPrepared: deletes.length,
+    deletesPrepared: allDeletes.length,
     writtenBatches,
     deletedBatches,
     sampleUpdates: updates.slice(0, 10),
-    sampleDeletes: deletes.slice(0, 10),
+    sampleDeletes: allDeletes.slice(0, 10),
   };
 }

@@ -14,7 +14,7 @@ export const loader = async ({ request }) => {
       shop,
       error: `No stock sync config found for ${shop}`,
       onlineLocationIds: [],
-      storeLocationIds: [],
+      storeLocations: {},
     };
   }
 
@@ -22,7 +22,7 @@ export const loader = async ({ request }) => {
     ok: true,
     shop,
     onlineLocationIds: config.onlineLocationIds,
-    storeLocationIds: config.storeLocationIds,
+    storeLocations: config.storeLocations,
   };
 };
 
@@ -44,7 +44,7 @@ export const action = async ({ request }) => {
     const result = await syncStockAvailability({
       admin,
       onlineLocationIds: config.onlineLocationIds,
-      storeLocationIds: config.storeLocationIds,
+      storeLocations: config.storeLocations,
       dryRun,
       enableDeletes: true,
     });
@@ -79,7 +79,7 @@ export default function StockSyncPage() {
       ) : (
         <>
           <p><strong>Online location IDs:</strong> {data.onlineLocationIds.join(", ")}</p>
-          <p><strong>Store location IDs:</strong> {data.storeLocationIds.join(", ")}</p>
+          <p><strong>Store locations:</strong> {Object.values(data.storeLocations).join(", ")}</p>
 
           <fetcher.Form method="post">
             <button

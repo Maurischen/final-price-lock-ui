@@ -28,7 +28,7 @@ export async function loader({ request }) {
         const result = await syncStockAvailability({
           admin,
           onlineLocationIds: config.onlineLocationIds,
-          storeLocationIds: config.storeLocationIds,
+          storeLocations: config.storeLocations,
           dryRun: false,
           enableDeletes: true,
         });
