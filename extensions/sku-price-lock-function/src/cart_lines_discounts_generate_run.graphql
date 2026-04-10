@@ -1,7 +1,10 @@
-query CartInput {
+query RunInput {
   cart {
     lines {
       id
+      attribute(key: "Condition") {
+        value
+      }
       cost {
         amountPerQuantity {
           amount
@@ -10,12 +13,10 @@ query CartInput {
       merchandise {
         __typename
         ... on ProductVariant {
+          id
           sku
         }
       }
     }
-  }
-  discount {
-    discountClasses
   }
 }
