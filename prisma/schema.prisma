@@ -28,16 +28,26 @@ model Session {
 }
 
 model PriceGuard {
-  id        String   @id @default(cuid())
-  shop      String   @default("matrix-warehouse-sa.myshopify.com")
-  sku       String
-  minPrice  Float
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  shop            String   @default("matrix-warehouse-sa.myshopify.com")
+  sku             String
+  minPrice        Float
+
+  // new fields for safer matching + future exact price lock
+  variantId       String?
+  productId       String?
+  mode            String?  // MIN_ONLY | EXACT_LOCK
+  lockedPrice     Float?
+  isEnabled       Boolean  @default(true)
+  lastCorrectedAt DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([shop, sku])
   @@index([shop])
   @@index([sku])
+  @@index([variantId])
 }
 
 model EmailTemplate {
