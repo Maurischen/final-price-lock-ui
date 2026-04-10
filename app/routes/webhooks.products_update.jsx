@@ -22,7 +22,6 @@ const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
 export const action = async ({ request }) => {
   const { topic, shop, payload } = await authenticate.webhook(request);
 
-  // Only care about product updates
   if (topic !== "PRODUCTS_UPDATE") {
     return new Response();
   }
@@ -34,7 +33,6 @@ export const action = async ({ request }) => {
     return new Response();
   }
 
-  // 🔹 Get an offline Admin client for this shop
   let admin;
   try {
     const ctx = await unauthenticated.admin(shop);
@@ -45,63 +43,130 @@ export const action = async ({ request }) => {
       shop,
       "- skipping this webhook.",
     );
-    // This will happen right after a fresh deploy until you open the app once.
     return new Response();
   }
 
-  // Collect all variants we actually need to fix in one GraphQL call
   const variantsToFix = [];
+  const correctedRuleIds = [];
 
   for (const variant of payload.variants) {
     const sku = variant.sku?.trim();
-    if (!sku) continue;
+    const variantId = variant.admin_graphql_api_id;
 
-    const rule = await db.priceGuard.findUnique({
-  where: {
-    shop_sku: { shop, sku },
-  },
-});
+    if (!variantId && !sku) {
+      continue;
+    }
 
-    if (!rule) {
-      // Not a guarded SKU, skip quietly
+    let rule = null;
+
+    // 1) Preferred lookup: shop + variantId
+    if (variantId) {
+      rule = await db.priceGuard.findFirst({
+        where: {
+          shop,
+          variantId,
+          isEnabled: true,
+        },
+      });
+    }
+
+    // 2) Fallback: legacy shop + sku
+    if (!rule && sku) {
+      rule = await db.priceGuard.findUnique({
+        where: {
+          shop_sku: { shop, sku },
+        },
+      });
+    }
+
+    if (!rule || !rule.isEnabled) {
       continue;
     }
 
     const currentPrice = parseFloat(variant.price);
-    const minPrice = Number(rule.minPrice);
 
     if (Number.isNaN(currentPrice)) {
-      console.log(`⚠️ ${sku}: variant has no numeric price, skipping`);
-      continue;
-    }
-
-    if (currentPrice >= minPrice) {
       console.log(
-        `✅ ${sku}: price ${currentPrice} >= min ${minPrice}, nothing to do`,
+        `⚠️ ${sku || variantId}: variant has no numeric price, skipping`,
       );
       continue;
     }
 
+    // Prevent instant self-trigger loops
+    if (
+      rule.lastCorrectedAt &&
+      Date.now() - new Date(rule.lastCorrectedAt).getTime() < 30000
+    ) {
+      console.log(`⏭️ ${sku || variantId}: recently corrected, skipping`);
+      continue;
+    }
+
+    const mode = rule.mode || "MIN_ONLY";
+    let shouldFix = false;
+    let targetPrice = null;
+
+    if (mode === "MIN_ONLY") {
+      const minPrice = Number(rule.minPrice);
+      targetPrice = minPrice;
+      shouldFix = currentPrice < minPrice;
+
+      if (!shouldFix) {
+        console.log(
+          `✅ ${sku || variantId}: price ${currentPrice} >= min ${minPrice}, nothing to do`,
+        );
+      }
+    } else if (mode === "EXACT_LOCK") {
+      const lockedPrice = Number(rule.lockedPrice);
+
+      if (Number.isNaN(lockedPrice)) {
+        console.log(
+          `⚠️ ${sku || variantId}: EXACT_LOCK rule has no valid lockedPrice, skipping`,
+        );
+        continue;
+      }
+
+      targetPrice = lockedPrice;
+      shouldFix = currentPrice !== lockedPrice;
+
+      if (!shouldFix) {
+        console.log(
+          `✅ ${sku || variantId}: price ${currentPrice} matches locked price ${lockedPrice}`,
+        );
+      }
+    } else {
+      console.log(
+        `⚠️ ${sku || variantId}: unknown mode "${mode}", skipping`,
+      );
+      continue;
+    }
+
+    if (!shouldFix) {
+      continue;
+    }
+
+    if (!variantId) {
+      console.log(`⚠️ ${sku}: no variantId on webhook payload, skipping fix`);
+      continue;
+    }
+
     console.log(
-      `🚨 ${sku}: price ${currentPrice} < min ${minPrice}, restoring…`,
+      `🚨 ${sku || variantId}: price ${currentPrice} should be ${targetPrice}, restoring…`,
     );
 
-    // This is the GraphQL variant id coming from the webhook payload
     variantsToFix.push({
-      id: variant.admin_graphql_api_id,
-      price: minPrice.toFixed(2),
+      id: variantId,
+      price: targetPrice.toFixed(2),
     });
+
+    correctedRuleIds.push(rule.id);
   }
 
-  // Nothing to update? We’re done.
   if (!variantsToFix.length) {
     return new Response();
   }
 
-  // 🔹 Get the product GID for productVariantsBulkUpdate
   const productId =
     payload.admin_graphql_api_id ??
-    // fallback: build a gid if for some reason we only have a numeric id
     `gid://shopify/Product/${String(payload.id).replace(/[^0-9]/g, "")}`;
 
   try {
@@ -132,41 +197,37 @@ export const action = async ({ request }) => {
       JSON.stringify(data, null, 2),
     );
 
-   const bulkResult = data?.data?.productVariantsBulkUpdate;
+    const bulkResult = data?.data?.productVariantsBulkUpdate;
 
-if (bulkResult?.userErrors?.length) {
-  console.error(
-    "❌ PriceGuard: GraphQL userErrors",
-    JSON.stringify(bulkResult.userErrors, null, 2),
-  );
-} else {
-  const updated = bulkResult?.productVariants ?? [];
+    if (bulkResult?.userErrors?.length) {
+      console.error(
+        "❌ PriceGuard: GraphQL userErrors",
+        JSON.stringify(bulkResult.userErrors, null, 2),
+      );
+    } else {
+      const updated = bulkResult?.productVariants ?? [];
 
-  console.log(
-    "💰 PriceGuard: Restored variants:",
-    updated.map((v) => `${v.id} → ${v.price}`),
-  );
+      console.log(
+        "💰 PriceGuard: Restored variants:",
+        updated.map((v) => `${v.id} → ${v.price}`),
+      );
 
-  // ✅ SAFETY LOG (update DB)
-  for (const v of updated) {
-    await db.priceGuard.updateMany({
-      where: {
-        shop,
-        variantId: v.id,
-      },
-      data: {
-        lastCorrectedAt: new Date(),
-      },
-    });
-  }
-}
+      if (correctedRuleIds.length) {
+        await db.priceGuard.updateMany({
+          where: {
+            id: { in: correctedRuleIds },
+          },
+          data: {
+            lastCorrectedAt: new Date(),
+          },
+        });
+      }
+    }
   } catch (err) {
     console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
   }
 
-  // Always 200 so Shopify doesn’t retry
   return new Response();
 };
 
-// So hitting the URL in a browser doesn’t 404
 export const loader = () => new Response("OK");
