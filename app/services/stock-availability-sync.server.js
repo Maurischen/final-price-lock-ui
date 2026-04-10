@@ -5,6 +5,8 @@ export async function syncStockAvailability({
   dryRun = true,
   enableDeletes = false,
 }) {
+  const OPEN_BOX_LOCATION_NAME = "BARGAIN BIN @ THE SQUARE";
+
   const onlineSet = new Set(onlineLocationIds);
   const storeSet = new Set(Object.keys(storeLocations));
 
@@ -98,6 +100,7 @@ export async function syncStockAvailability({
           title,
           onlineQty: 0,
           storeQty: 0,
+          openBoxQty: 0,
           availableStores: new Set(),
         });
         processedProductsSeen++;
@@ -121,8 +124,14 @@ export async function syncStockAvailability({
         } else if (storeSet.has(locationId)) {
           state.storeQty += qty;
 
-          if (qty > 0 && storeLocations[locationId]) {
-            state.availableStores.add(storeLocations[locationId]);
+          const locationName = storeLocations[locationId];
+
+          if (qty > 0 && locationName) {
+            state.availableStores.add(locationName);
+
+            if (locationName === OPEN_BOX_LOCATION_NAME) {
+              state.openBoxQty += qty;
+            }
           }
         }
       }
@@ -180,6 +189,14 @@ export async function syncStockAvailability({
         key: "available_stores",
       });
     }
+
+    updates.push({
+      ownerId: product.productId,
+      namespace: "custom",
+      key: "open_box_qty",
+      type: "number_integer",
+      value: String(product.openBoxQty || 0),
+    });
   }
 
   if (!dryRun && updates.length > 0) {
