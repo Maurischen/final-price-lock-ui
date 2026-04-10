@@ -132,20 +132,34 @@ export const action = async ({ request }) => {
       JSON.stringify(data, null, 2),
     );
 
-    const bulkResult = data?.data?.productVariantsBulkUpdate;
+   const bulkResult = data?.data?.productVariantsBulkUpdate;
 
-    if (bulkResult?.userErrors?.length) {
-      console.error(
-        "❌ PriceGuard: GraphQL userErrors",
-        JSON.stringify(bulkResult.userErrors, null, 2),
-      );
-    } else {
-      const updated = bulkResult?.productVariants ?? [];
-      console.log(
-        "💰 PriceGuard: Restored variants:",
-        updated.map((v) => `${v.id} → ${v.price}`),
-      );
-    }
+if (bulkResult?.userErrors?.length) {
+  console.error(
+    "❌ PriceGuard: GraphQL userErrors",
+    JSON.stringify(bulkResult.userErrors, null, 2),
+  );
+} else {
+  const updated = bulkResult?.productVariants ?? [];
+
+  console.log(
+    "💰 PriceGuard: Restored variants:",
+    updated.map((v) => `${v.id} → ${v.price}`),
+  );
+
+  // ✅ SAFETY LOG (update DB)
+  for (const v of updated) {
+    await db.priceGuard.updateMany({
+      where: {
+        shop,
+        variantId: v.id,
+      },
+      data: {
+        lastCorrectedAt: new Date(),
+      },
+    });
+  }
+}
   } catch (err) {
     console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
   }
