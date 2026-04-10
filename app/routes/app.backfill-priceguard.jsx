@@ -1,149 +1,190 @@
-import { useLoaderData } from "react-router";
 import { authenticate, unauthenticated } from "../shopify.server";
 import db from "../db.server";
 
-const FIND_VARIANT_BY_SKU = `#graphql
-  query FindVariantBySku($query: String!) {
-    productVariants(first: 5, query: $query) {
-      edges {
-        node {
-          id
-          sku
-          title
-          product {
-            id
-            title
-          }
-        }
+const PRICE_GUARD_VARIANT_UPDATE_MUTATION = `#graphql
+  mutation PriceGuardVariantUpdate(
+    $productId: ID!,
+    $variants: [ProductVariantsBulkInput!]!
+  ) {
+    productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+      productVariants {
+        id
+        price
+      }
+      userErrors {
+        field
+        message
       }
     }
   }
 `;
 
-export async function loader({ request }) {
-  await authenticate.admin(request);
+export const action = async ({ request }) => {
+  const { topic, shop, payload } = await authenticate.webhook(request);
 
-  const guards = await db.priceGuard.findMany({
-    where: {
-      OR: [{ variantId: null }, { productId: null }],
-    },
-    orderBy: { shop: "asc" },
-  });
+  if (topic !== "PRODUCTS_UPDATE") {
+    return new Response();
+  }
 
-  const results = [];
+  console.log(`🧩 Received webhook topic=${topic} for shop=${shop}`);
 
-  for (const guard of guards) {
-    const { id, shop, sku } = guard;
+  if (!payload?.variants || !Array.isArray(payload.variants)) {
+    console.log("⚠️ No variants array on payload");
+    return new Response();
+  }
 
-    if (!sku) {
-      results.push({
-        shop,
-        sku: null,
-        status: "skipped",
-        message: "No SKU on record",
-      });
-      continue;
-    }
+  let admin;
+  try {
+    const ctx = await unauthenticated.admin(shop);
+    admin = ctx.admin;
+  } catch (err) {
+    console.warn(
+      "⚠️ PriceGuard: no offline admin session yet for",
+      shop,
+      "- skipping this webhook.",
+    );
+    return new Response();
+  }
 
-    try {
-      const { admin } = await unauthenticated.admin(shop);
+  const variantsToFix = [];
+  const correctedRuleIds = [];
 
-      const response = await admin.graphql(FIND_VARIANT_BY_SKU, {
-        variables: { query: `sku:${sku}` },
-      });
+  for (const variant of payload.variants) {
+    const sku = variant.sku?.trim();
+    const variantId = variant.admin_graphql_api_id;
 
-      const jsonData = await response.json();
-      const edges = jsonData?.data?.productVariants?.edges ?? [];
+    if (!variantId && !sku) continue;
 
-      if (!edges.length) {
-        results.push({
+    let rule = null;
+
+    // 1. Try variantId first
+    if (variantId) {
+      rule = await db.priceGuard.findFirst({
+        where: {
           shop,
-          sku,
-          status: "not_found",
-          message: "No Shopify variant match found",
-        });
-        continue;
-      }
-
-      const exactMatch = edges.find(
-        (edge) => edge?.node?.sku?.trim() === sku.trim(),
-      );
-
-      const match = exactMatch?.node || edges[0]?.node;
-
-      if (!match) {
-        results.push({
-          shop,
-          sku,
-          status: "not_found",
-          message: "No usable Shopify match found",
-        });
-        continue;
-      }
-
-      await db.priceGuard.update({
-        where: { id },
-        data: {
-          variantId: match.id,
-          productId: match.product.id,
-          mode: "MIN_ONLY",
+          variantId,
           isEnabled: true,
         },
       });
+    }
 
-      results.push({
-        shop,
-        sku,
-        status: "updated",
-        variantId: match.id,
-        productId: match.product.id,
-        productTitle: match.product.title,
-        variantTitle: match.title,
-      });
-    } catch (error) {
-      results.push({
-        shop,
-        sku,
-        status: "error",
-        message: error instanceof Error ? error.message : String(error),
+    // 2. Fallback to legacy shop + sku lookup
+    if (!rule && sku) {
+      rule = await db.priceGuard.findUnique({
+        where: {
+          shop_sku: { shop, sku },
+        },
       });
     }
+
+    if (!rule || !rule.isEnabled) {
+      continue;
+    }
+
+    const currentPrice = parseFloat(variant.price);
+    const minPrice = Number(rule.minPrice);
+
+    if (Number.isNaN(currentPrice)) {
+      console.log(
+        `⚠️ ${sku || variantId}: variant has no numeric price, skipping`,
+      );
+      continue;
+    }
+
+    // Optional loop guard
+    if (
+      rule.lastCorrectedAt &&
+      Date.now() - new Date(rule.lastCorrectedAt).getTime() < 30000
+    ) {
+      console.log(`⏭️ ${sku || variantId}: recently corrected, skipping`);
+      continue;
+    }
+
+    if (currentPrice >= minPrice) {
+      console.log(
+        `✅ ${sku || variantId}: price ${currentPrice} >= min ${minPrice}, nothing to do`,
+      );
+      continue;
+    }
+
+    console.log(
+      `🚨 ${sku || variantId}: price ${currentPrice} < min ${minPrice}, restoring…`,
+    );
+
+    variantsToFix.push({
+      id: variantId,
+      price: minPrice.toFixed(2),
+    });
+
+    correctedRuleIds.push(rule.id);
   }
 
-  return {
-    total: guards.length,
-    updated: results.filter((r) => r.status === "updated").length,
-    notFound: results.filter((r) => r.status === "not_found").length,
-    errors: results.filter((r) => r.status === "error").length,
-    skipped: results.filter((r) => r.status === "skipped").length,
-    results,
-  };
-}
+  if (!variantsToFix.length) {
+    return new Response();
+  }
 
-export default function BackfillPriceGuardPage() {
-  const data = useLoaderData();
+  const productId =
+    payload.admin_graphql_api_id ??
+    `gid://shopify/Product/${String(payload.id).replace(/[^0-9]/g, "")}`;
 
-  return (
-    <div style={{ padding: 20 }}>
-      <h1>PriceGuard Backfill</h1>
-      <p>Total checked: {data.total}</p>
-      <p>Updated: {data.updated}</p>
-      <p>Not found: {data.notFound}</p>
-      <p>Errors: {data.errors}</p>
-      <p>Skipped: {data.skipped}</p>
+  try {
+    const response = await admin.graphql(
+      PRICE_GUARD_VARIANT_UPDATE_MUTATION,
+      {
+        variables: {
+          productId,
+          variants: variantsToFix,
+        },
+      },
+    );
 
-      <pre
-        style={{
-          background: "#111",
-          color: "#0f0",
-          padding: 16,
-          borderRadius: 8,
-          overflowX: "auto",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {JSON.stringify(data.results, null, 2)}
-      </pre>
-    </div>
-  );
-}
+    if (response.status !== 200) {
+      const text = await response.text();
+      console.error(
+        "❌ PriceGuard: GraphQL HTTP error",
+        response.status,
+        text,
+      );
+      return new Response();
+    }
+
+    const data = await response.json();
+
+    console.log(
+      "[PriceGuard] Raw GraphQL data:",
+      JSON.stringify(data, null, 2),
+    );
+
+    const bulkResult = data?.data?.productVariantsBulkUpdate;
+
+    if (bulkResult?.userErrors?.length) {
+      console.error(
+        "❌ PriceGuard: GraphQL userErrors",
+        JSON.stringify(bulkResult.userErrors, null, 2),
+      );
+    } else {
+      const updated = bulkResult?.productVariants ?? [];
+      console.log(
+        "💰 PriceGuard: Restored variants:",
+        updated.map((v) => `${v.id} → ${v.price}`),
+      );
+
+      if (correctedRuleIds.length) {
+        await db.priceGuard.updateMany({
+          where: {
+            id: { in: correctedRuleIds },
+          },
+          data: {
+            lastCorrectedAt: new Date(),
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error("❌ PriceGuard: GraphQL call failed (exception)", err);
+  }
+
+  return new Response();
+};
+
+export const loader = () => new Response("OK");
