@@ -68,6 +68,7 @@ export const STOCK_SYNC_CONFIG = {
     ],
     storeLocations: {
       "gid://shopify/Location/66716106835": "Cape Town",
+      "gid://shopify/Location/80004218963": "BARGAIN BIN @ THE SQUARE",
     },
   },
 };
