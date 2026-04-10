@@ -7,7 +7,23 @@ import {
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
-// 🔹 Loader: fetch PriceGuard rules ONLY for the current store
+function formatDateTime(value) {
+  if (!value) return "—";
+
+  try {
+    return new Date(value).toLocaleString("en-ZA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+// Loader: fetch PriceGuard rules ONLY for the current store
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -20,7 +36,7 @@ export async function loader({ request }) {
   return { rules };
 }
 
-// 🔹 Action: create / update / delete rules for the current store
+// Action: create / update / delete rules for the current store
 export async function action({ request }) {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -30,23 +46,63 @@ export async function action({ request }) {
   try {
     if (intent === "create") {
       const sku = String(formData.get("sku") || "").trim();
+      const mode = String(formData.get("mode") || "MIN_ONLY").trim();
       const minPriceRaw = String(formData.get("minPrice") || "").trim();
+      const lockedPriceRaw = String(formData.get("lockedPrice") || "").trim();
 
-      if (!sku || !minPriceRaw) {
-        return { ok: false, error: "SKU and minimum price are required." };
+      if (!sku) {
+        return { ok: false, error: "SKU is required." };
       }
 
-      const minPrice = parseFloat(minPriceRaw.replace(",", "."));
-      if (Number.isNaN(minPrice) || minPrice <= 0) {
-        return { ok: false, error: "Minimum price must be a positive number." };
+      if (mode !== "MIN_ONLY" && mode !== "EXACT_LOCK") {
+        return { ok: false, error: "Invalid mode selected." };
+      }
+
+      let minPrice = null;
+      let lockedPrice = null;
+
+      if (mode === "MIN_ONLY") {
+        if (!minPriceRaw) {
+          return { ok: false, error: "Minimum price is required for Minimum mode." };
+        }
+
+        minPrice = parseFloat(minPriceRaw.replace(",", "."));
+
+        if (Number.isNaN(minPrice) || minPrice <= 0) {
+          return { ok: false, error: "Minimum price must be a positive number." };
+        }
+      }
+
+      if (mode === "EXACT_LOCK") {
+        if (!lockedPriceRaw) {
+          return { ok: false, error: "Locked price is required for Exact Lock mode." };
+        }
+
+        lockedPrice = parseFloat(lockedPriceRaw.replace(",", "."));
+
+        if (Number.isNaN(lockedPrice) || lockedPrice <= 0) {
+          return { ok: false, error: "Locked price must be a positive number." };
+        }
       }
 
       await db.priceGuard.upsert({
         where: {
           shop_sku: { shop, sku },
         },
-        update: { minPrice },
-        create: { shop, sku, minPrice },
+        update: {
+          mode,
+          minPrice: mode === "MIN_ONLY" ? minPrice : 0,
+          lockedPrice: mode === "EXACT_LOCK" ? lockedPrice : null,
+          isEnabled: true,
+        },
+        create: {
+          shop,
+          sku,
+          mode,
+          minPrice: mode === "MIN_ONLY" ? minPrice : 0,
+          lockedPrice: mode === "EXACT_LOCK" ? lockedPrice : null,
+          isEnabled: true,
+        },
       });
 
       return { ok: true };
@@ -54,22 +110,55 @@ export async function action({ request }) {
 
     if (intent === "update") {
       const sku = String(formData.get("sku") || "").trim();
+      const mode = String(formData.get("mode") || "MIN_ONLY").trim();
       const minPriceRaw = String(formData.get("minPrice") || "").trim();
+      const lockedPriceRaw = String(formData.get("lockedPrice") || "").trim();
 
-      if (!sku || !minPriceRaw) {
-        return { ok: false, error: "SKU and minimum price are required." };
+      if (!sku) {
+        return { ok: false, error: "SKU is required." };
       }
 
-      const minPrice = parseFloat(minPriceRaw.replace(",", "."));
-      if (Number.isNaN(minPrice) || minPrice <= 0) {
-        return { ok: false, error: "Minimum price must be positive." };
+      if (mode !== "MIN_ONLY" && mode !== "EXACT_LOCK") {
+        return { ok: false, error: "Invalid mode selected." };
+      }
+
+      let minPrice = null;
+      let lockedPrice = null;
+
+      if (mode === "MIN_ONLY") {
+        if (!minPriceRaw) {
+          return { ok: false, error: "Minimum price is required for Minimum mode." };
+        }
+
+        minPrice = parseFloat(minPriceRaw.replace(",", "."));
+
+        if (Number.isNaN(minPrice) || minPrice <= 0) {
+          return { ok: false, error: "Minimum price must be a positive number." };
+        }
+      }
+
+      if (mode === "EXACT_LOCK") {
+        if (!lockedPriceRaw) {
+          return { ok: false, error: "Locked price is required for Exact Lock mode." };
+        }
+
+        lockedPrice = parseFloat(lockedPriceRaw.replace(",", "."));
+
+        if (Number.isNaN(lockedPrice) || lockedPrice <= 0) {
+          return { ok: false, error: "Locked price must be a positive number." };
+        }
       }
 
       await db.priceGuard.update({
         where: {
           shop_sku: { shop, sku },
         },
-        data: { minPrice },
+        data: {
+          mode,
+          minPrice: mode === "MIN_ONLY" ? minPrice : 0,
+          lockedPrice: mode === "EXACT_LOCK" ? lockedPrice : null,
+          isEnabled: true,
+        },
       });
 
       return { ok: true };
@@ -122,10 +211,9 @@ export default function PriceGuardPage() {
         </s-section>
       )}
 
-      {/* Add / Update rule */}
       <s-section>
         <s-paragraph>
-          Add a new SKU or update the minimum allowed price for an existing one.
+          Add a new SKU or update an existing one with either a minimum price or an exact locked price.
         </s-paragraph>
 
         <Form method="post">
@@ -148,9 +236,44 @@ export default function PriceGuardPage() {
 
             <s-box flex="1">
               <label>
+                <s-text as="p" fontWeight="medium">Mode</s-text>
+                <select
+                  name="mode"
+                  defaultValue="MIN_ONLY"
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: "4px",
+                    border: "1px solid #c4cdd5",
+                  }}
+                >
+                  <option value="MIN_ONLY">Minimum Price</option>
+                  <option value="EXACT_LOCK">Exact Lock</option>
+                </select>
+              </label>
+            </s-box>
+
+            <s-box flex="1">
+              <label>
                 <s-text as="p" fontWeight="medium">Minimum price (incl. VAT)</s-text>
                 <input
                   name="minPrice"
+                  placeholder="e.g. 19950"
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: "4px",
+                    border: "1px solid #c4cdd5",
+                  }}
+                />
+              </label>
+            </s-box>
+
+            <s-box flex="1">
+              <label>
+                <s-text as="p" fontWeight="medium">Locked price (incl. VAT)</s-text>
+                <input
+                  name="lockedPrice"
                   placeholder="e.g. 19950"
                   style={{
                     width: "100%",
@@ -170,7 +293,6 @@ export default function PriceGuardPage() {
         </Form>
       </s-section>
 
-      {/* Render rules */}
       <s-section>
         <s-paragraph as="h2" fontWeight="bold">Existing rules</s-paragraph>
 
@@ -181,39 +303,109 @@ export default function PriceGuardPage() {
             <thead>
               <tr>
                 <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>SKU</th>
+                <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>Mode</th>
                 <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>Min price</th>
+                <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>Locked price</th>
+                <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>Last corrected</th>
                 <th style={{ textAlign: "right", padding: "8px", borderBottom: "1px solid #e1e3e5" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rules.map((rule) => (
                 <tr key={rule.id}>
-                  <td style={{ padding: "8px" }}><code>{rule.sku}</code></td>
                   <td style={{ padding: "8px" }}>
-                    <Form method="post" style={{ display: "inline-flex", alignItems: "center" }}>
+                    <code>{rule.sku}</code>
+                  </td>
+
+                  <td style={{ padding: "8px" }}>
+                    <Form method="post" style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
                       <input type="hidden" name="_action" value="update" />
                       <input type="hidden" name="sku" value={rule.sku} />
 
+                      <select
+                        name="mode"
+                        defaultValue={rule.mode || "MIN_ONLY"}
+                        style={{
+                          padding: "4px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid #c4cdd5",
+                        }}
+                      >
+                        <option value="MIN_ONLY">Minimum Price</option>
+                        <option value="EXACT_LOCK">Exact Lock</option>
+                      </select>
+                  </Form>
+                  </td>
+
+                  <td style={{ padding: "8px" }}>
+                    <Form method="post" style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                      <input type="hidden" name="_action" value="update" />
+                      <input type="hidden" name="sku" value={rule.sku} />
+                      <input type="hidden" name="mode" value={rule.mode || "MIN_ONLY"} />
+
                       <input
                         name="minPrice"
-                        defaultValue={rule.minPrice?.toString()}
+                        defaultValue={rule.minPrice?.toString() || ""}
                         style={{
                           width: "120px",
                           padding: "4px 6px",
                           borderRadius: "4px",
                           border: "1px solid #c4cdd5",
-                          marginRight: "8px",
                         }}
                       />
 
-                      <s-button variant="plain" tone="success" type="submit">Update</s-button>
+                      <input
+                        type="hidden"
+                        name="lockedPrice"
+                        value={rule.lockedPrice?.toString() || ""}
+                      />
+
+                      <s-button variant="plain" tone="success" type="submit">
+                        Update
+                      </s-button>
                     </Form>
                   </td>
+
+                  <td style={{ padding: "8px" }}>
+                    <Form method="post" style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                      <input type="hidden" name="_action" value="update" />
+                      <input type="hidden" name="sku" value={rule.sku} />
+                      <input type="hidden" name="mode" value={rule.mode || "MIN_ONLY"} />
+
+                      <input
+                        type="hidden"
+                        name="minPrice"
+                        value={rule.minPrice?.toString() || ""}
+                      />
+
+                      <input
+                        name="lockedPrice"
+                        defaultValue={rule.lockedPrice?.toString() || ""}
+                        style={{
+                          width: "120px",
+                          padding: "4px 6px",
+                          borderRadius: "4px",
+                          border: "1px solid #c4cdd5",
+                        }}
+                      />
+
+                      <s-button variant="plain" tone="success" type="submit">
+                        Update
+                      </s-button>
+                    </Form>
+                  </td>
+
+                  <td style={{ padding: "8px" }}>
+                    {formatDateTime(rule.lastCorrectedAt)}
+                  </td>
+
                   <td style={{ padding: "8px", textAlign: "right" }}>
                     <Form method="post" style={{ display: "inline" }}>
                       <input type="hidden" name="_action" value="delete" />
                       <input type="hidden" name="sku" value={rule.sku} />
-                      <s-button variant="plain" tone="critical" type="submit">Delete</s-button>
+                      <s-button variant="plain" tone="critical" type="submit">
+                        Delete
+                      </s-button>
                     </Form>
                   </td>
                 </tr>
