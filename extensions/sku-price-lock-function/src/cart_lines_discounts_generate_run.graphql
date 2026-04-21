@@ -20,4 +20,10 @@ query RunInput {
       }
     }
   }
+
+  discount {
+    metafield(namespace: "$app:bundle-discount", key: "function-configuration") {
+      jsonValue
+    }
+  }
 }
