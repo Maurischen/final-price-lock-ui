@@ -396,12 +396,109 @@ export default function BundleDiscountsPage() {
   );
 }
 
+function cloneRule(rule) {
+  return {
+    ...rule,
+    name: rule.name ? `${rule.name} Copy` : "Copied Rule",
+    accessories: (rule.accessories || []).map((accessory) => ({
+      ...accessory,
+    })),
+  };
+}
+
+function validateConfig(config) {
+  const errors = [];
+
+  (config.rules || []).forEach((rule, ruleIndex) => {
+    if (!String(rule.name || "").trim()) {
+      errors.push(`Rule ${ruleIndex + 1}: Rule name is required.`);
+    }
+
+    if (!String(rule.triggerSku || "").trim()) {
+      errors.push(`Rule ${ruleIndex + 1}: Trigger laptop SKU is required.`);
+    }
+
+    const ratio = parseInt(rule.ratio, 10);
+    if (!Number.isFinite(ratio) || ratio < 1) {
+      errors.push(`Rule ${ruleIndex + 1}: Ratio must be 1 or more.`);
+    }
+
+    const accessories = rule.accessories || [];
+
+    if (accessories.length === 0) {
+      errors.push(`Rule ${ruleIndex + 1}: At least one accessory is required.`);
+    }
+
+    const seenSkus = new Set();
+
+    accessories.forEach((accessory, accessoryIndex) => {
+      const sku = String(accessory.sku || "").trim();
+      const discountAmount = parseFloat(String(accessory.discountAmount || "").replace(",", "."));
+
+      if (!sku) {
+        errors.push(
+          `Rule ${ruleIndex + 1}, Accessory ${accessoryIndex + 1}: Accessory SKU is required.`,
+        );
+      }
+
+      if (sku) {
+        const normalizedSku = sku.toUpperCase();
+        if (seenSkus.has(normalizedSku)) {
+          errors.push(
+            `Rule ${ruleIndex + 1}: Duplicate accessory SKU "${sku}" found.`,
+          );
+        }
+        seenSkus.add(normalizedSku);
+      }
+
+      if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+        errors.push(
+          `Rule ${ruleIndex + 1}, Accessory ${accessoryIndex + 1}: Discount amount must be greater than 0.`,
+        );
+      }
+    });
+  });
+
+  return errors;
+}
+
 function BundleRulesEditor({ initialConfig, isSubmitting }) {
   const [config, setConfig] = React.useState(normalizeConfig(initialConfig));
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [collapsedRules, setCollapsedRules] = React.useState({});
 
   React.useEffect(() => {
     setConfig(normalizeConfig(initialConfig));
   }, [initialConfig]);
+
+  const validationErrors = React.useMemo(() => validateConfig(config), [config]);
+
+  const visibleRuleIndexes = React.useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    if (!term) {
+      return config.rules.map((_, index) => index);
+    }
+
+    return config.rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => {
+        const haystacks = [
+          rule.name,
+          rule.triggerSku,
+          rule.message,
+          ...(rule.accessories || []).flatMap((accessory) => [
+            accessory.sku,
+            accessory.label,
+          ]),
+        ];
+
+        return haystacks.some((value) =>
+          String(value || "").toLowerCase().includes(term),
+        );
+      })
+      .map(({ index }) => index);
+  }, [config.rules, searchTerm]);
 
   function updateRule(ruleIndex, updates) {
     setConfig((prev) => {
@@ -421,11 +518,43 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
     }));
   }
 
+  function duplicateRule(ruleIndex) {
+    setConfig((prev) => {
+      const next = structuredClone(prev);
+      const copiedRule = cloneRule(next.rules[ruleIndex]);
+      next.rules.splice(ruleIndex + 1, 0, copiedRule);
+      return next;
+    });
+  }
+
   function removeRule(ruleIndex) {
     setConfig((prev) => ({
       ...prev,
       rules: prev.rules.filter((_, index) => index !== ruleIndex),
     }));
+  }
+
+  function toggleRule(ruleIndex) {
+    setCollapsedRules((prev) => ({
+      ...prev,
+      [ruleIndex]: !prev[ruleIndex],
+    }));
+  }
+
+  function expandAll() {
+    const next = {};
+    config.rules.forEach((_, index) => {
+      next[index] = false;
+    });
+    setCollapsedRules(next);
+  }
+
+  function collapseAll() {
+    const next = {};
+    config.rules.forEach((_, index) => {
+      next[index] = true;
+    });
+    setCollapsedRules(next);
   }
 
   function updateAccessory(ruleIndex, accessoryIndex, updates) {
@@ -468,148 +597,118 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
       <input type="hidden" name="config" value={JSON.stringify(config)} />
 
       <s-box display="flex" flexDirection="column" gap="base">
+        <s-box
+          display="flex"
+          flexDirection="row"
+          gap="base"
+          alignItems="end"
+          style={{ flexWrap: "wrap" }}
+        >
+          <s-box flex="2">
+            <label>
+              <s-text as="p" fontWeight="medium">Search rules</s-text>
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by rule name, trigger SKU, accessory SKU or label"
+                style={inputStyle}
+              />
+            </label>
+          </s-box>
+
+          <s-box display="flex" gap="base">
+            <s-button type="button" variant="secondary" onClick={expandAll}>
+              Expand all
+            </s-button>
+            <s-button type="button" variant="secondary" onClick={collapseAll}>
+              Collapse all
+            </s-button>
+          </s-box>
+        </s-box>
+
+        {validationErrors.length > 0 && (
+          <s-box padding="base" background="bg-caution-strong" borderRadius="loose">
+            <s-text as="p" fontWeight="bold">Please fix these before saving:</s-text>
+            <ul style={{ margin: "8px 0 0 18px" }}>
+              {validationErrors.map((error, index) => (
+                <li key={`validation-${index}`}>{error}</li>
+              ))}
+            </ul>
+          </s-box>
+        )}
+
         {config.rules.length === 0 && (
           <s-box padding="base" background="bg-surface-secondary" borderRadius="loose">
             <s-text as="p">No bundle rules yet. Add your first laptop bundle below.</s-text>
           </s-box>
         )}
 
-        {config.rules.map((rule, ruleIndex) => (
-          <s-box
-            key={`rule-${ruleIndex}`}
-            padding="base"
-            borderWidth="1"
-            borderColor="border-subdued"
-            borderRadius="loose"
-          >
-            <s-box display="flex" flexDirection="column" gap="base">
-              <s-box display="flex" justifyContent="space-between" alignItems="center">
-                <s-text as="h3" fontWeight="bold">
-                  Rule {ruleIndex + 1}
-                </s-text>
+        {visibleRuleIndexes.length === 0 && config.rules.length > 0 && (
+          <s-box padding="base" background="bg-surface-secondary" borderRadius="loose">
+            <s-text as="p">No rules match your search.</s-text>
+          </s-box>
+        )}
 
-                <button
-                  type="button"
-                  onClick={() => removeRule(ruleIndex)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "#b42318",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Remove rule
-                </button>
-              </s-box>
+        {visibleRuleIndexes.map((ruleIndex) => {
+          const rule = config.rules[ruleIndex];
+          const isCollapsed = Boolean(collapsedRules[ruleIndex]);
 
-              <s-box display="flex" flexDirection="row" gap="base">
-                <s-box flex="1">
-                  <label>
-                    <s-text as="p" fontWeight="medium">Rule name</s-text>
-                    <input
-                      value={rule.name}
-                      onChange={(e) => updateRule(ruleIndex, { name: e.target.value })}
-                      placeholder="e.g. ASUS Vivobook Bundle"
-                      style={inputStyle}
-                    />
-                  </label>
+          return (
+            <s-box
+              key={`rule-${ruleIndex}`}
+              padding="base"
+              borderWidth="1"
+              borderColor="border-subdued"
+              borderRadius="loose"
+            >
+              <s-box display="flex" flexDirection="column" gap="base">
+                <s-box display="flex" justifyContent="space-between" alignItems="center">
+                  <s-box display="flex" flexDirection="column" gap="tight">
+                    <s-text as="h3" fontWeight="bold">
+                      {rule.name || `Rule ${ruleIndex + 1}`}
+                    </s-text>
+                    <s-text as="p" tone="subdued">
+                      Trigger SKU: {rule.triggerSku || "Not set"} | Accessories: {(rule.accessories || []).length}
+                    </s-text>
+                  </s-box>
+
+                  <s-box display="flex" gap="base" alignItems="center">
+                    <button
+                      type="button"
+                      onClick={() => toggleRule(ruleIndex)}
+                      style={plainButtonStyle}
+                    >
+                      {isCollapsed ? "Expand" : "Collapse"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => duplicateRule(ruleIndex)}
+                      style={plainButtonStyle}
+                    >
+                      Duplicate
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => removeRule(ruleIndex)}
+                      style={dangerButtonStyle}
+                    >
+                      Remove
+                    </button>
+                  </s-box>
                 </s-box>
 
-                <s-box flex="1">
-                  <label>
-                    <s-text as="p" fontWeight="medium">Trigger laptop SKU</s-text>
-                    <input
-                      value={rule.triggerSku}
-                      onChange={(e) => updateRule(ruleIndex, { triggerSku: e.target.value })}
-                      placeholder="e.g. M1605NAQ-716512S0W"
-                      style={inputStyle}
-                    />
-                  </label>
-                </s-box>
-              </s-box>
-
-              <s-box display="flex" flexDirection="row" gap="base">
-                <s-box flex="1">
-                  <label>
-                    <s-text as="p" fontWeight="medium">Ratio</s-text>
-                    <input
-                      type="number"
-                      min="1"
-                      value={rule.ratio}
-                      onChange={(e) => updateRule(ruleIndex, { ratio: e.target.value })}
-                      placeholder="1"
-                      style={inputStyle}
-                    />
-                  </label>
-                </s-box>
-
-                <s-box flex="2">
-                  <label>
-                    <s-text as="p" fontWeight="medium">Discount message</s-text>
-                    <input
-                      value={rule.message}
-                      onChange={(e) => updateRule(ruleIndex, { message: e.target.value })}
-                      placeholder="e.g. Laptop accessory bundle discount"
-                      style={inputStyle}
-                    />
-                  </label>
-                </s-box>
-
-                <s-box flex="1">
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "24px" }}>
-                    <input
-                      type="checkbox"
-                      checked={rule.active}
-                      onChange={(e) => updateRule(ruleIndex, { active: e.target.checked })}
-                    />
-                    <s-text as="span">Active</s-text>
-                  </label>
-                </s-box>
-              </s-box>
-
-              <s-box paddingBlockStart="base">
-                <s-text as="h4" fontWeight="bold">Accessories</s-text>
-              </s-box>
-
-              {rule.accessories.map((accessory, accessoryIndex) => (
-                <s-box
-                  key={`rule-${ruleIndex}-accessory-${accessoryIndex}`}
-                  padding="base"
-                  background="bg-surface-secondary"
-                  borderRadius="loose"
-                >
-                  <s-box display="flex" flexDirection="column" gap="base">
-                    <s-box display="flex" justifyContent="space-between" alignItems="center">
-                      <s-text as="p" fontWeight="medium">
-                        Accessory {accessoryIndex + 1}
-                      </s-text>
-
-                      <button
-                        type="button"
-                        onClick={() => removeAccessory(ruleIndex, accessoryIndex)}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "#b42318",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </s-box>
-
+                {!isCollapsed && (
+                  <>
                     <s-box display="flex" flexDirection="row" gap="base">
                       <s-box flex="1">
                         <label>
-                          <s-text as="p" fontWeight="medium">Accessory SKU</s-text>
+                          <s-text as="p" fontWeight="medium">Rule name</s-text>
                           <input
-                            value={accessory.sku}
-                            onChange={(e) =>
-                              updateAccessory(ruleIndex, accessoryIndex, { sku: e.target.value })
-                            }
-                            placeholder="e.g. T54"
+                            value={rule.name}
+                            onChange={(e) => updateRule(ruleIndex, { name: e.target.value })}
+                            placeholder="e.g. ASUS Vivobook Bundle"
                             style={inputStyle}
                           />
                         </label>
@@ -617,15 +716,27 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
 
                       <s-box flex="1">
                         <label>
-                          <s-text as="p" fontWeight="medium">Discount amount</s-text>
+                          <s-text as="p" fontWeight="medium">Trigger laptop SKU</s-text>
                           <input
-                            value={accessory.discountAmount}
-                            onChange={(e) =>
-                              updateAccessory(ruleIndex, accessoryIndex, {
-                                discountAmount: e.target.value,
-                              })
-                            }
-                            placeholder="e.g. 30"
+                            value={rule.triggerSku}
+                            onChange={(e) => updateRule(ruleIndex, { triggerSku: e.target.value })}
+                            placeholder="e.g. M1605NAQ-716512S0W"
+                            style={inputStyle}
+                          />
+                        </label>
+                      </s-box>
+                    </s-box>
+
+                    <s-box display="flex" flexDirection="row" gap="base">
+                      <s-box flex="1">
+                        <label>
+                          <s-text as="p" fontWeight="medium">Ratio</s-text>
+                          <input
+                            type="number"
+                            min="1"
+                            value={rule.ratio}
+                            onChange={(e) => updateRule(ruleIndex, { ratio: e.target.value })}
+                            placeholder="1"
                             style={inputStyle}
                           />
                         </label>
@@ -633,37 +744,133 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
 
                       <s-box flex="2">
                         <label>
-                          <s-text as="p" fontWeight="medium">Label</s-text>
+                          <s-text as="p" fontWeight="medium">Discount message</s-text>
                           <input
-                            value={accessory.label}
-                            onChange={(e) =>
-                              updateAccessory(ruleIndex, accessoryIndex, { label: e.target.value })
-                            }
-                            placeholder='e.g. Bag less R30'
+                            value={rule.message}
+                            onChange={(e) => updateRule(ruleIndex, { message: e.target.value })}
+                            placeholder="e.g. Laptop accessory bundle discount"
                             style={inputStyle}
                           />
                         </label>
                       </s-box>
-                    </s-box>
-                  </s-box>
-                </s-box>
-              ))}
 
-              <s-box>
-                <s-button type="button" variant="secondary" onClick={() => addAccessory(ruleIndex)}>
-                  Add accessory
-                </s-button>
+                      <s-box flex="1">
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "24px" }}>
+                          <input
+                            type="checkbox"
+                            checked={rule.active}
+                            onChange={(e) => updateRule(ruleIndex, { active: e.target.checked })}
+                          />
+                          <s-text as="span">Active</s-text>
+                        </label>
+                      </s-box>
+                    </s-box>
+
+                    <s-box paddingBlockStart="base">
+                      <s-text as="h4" fontWeight="bold">Accessories</s-text>
+                    </s-box>
+
+                    {rule.accessories.map((accessory, accessoryIndex) => (
+                      <s-box
+                        key={`rule-${ruleIndex}-accessory-${accessoryIndex}`}
+                        padding="base"
+                        background="bg-surface-secondary"
+                        borderRadius="loose"
+                      >
+                        <s-box display="flex" flexDirection="column" gap="base">
+                          <s-box display="flex" justifyContent="space-between" alignItems="center">
+                            <s-text as="p" fontWeight="medium">
+                              Accessory {accessoryIndex + 1}
+                            </s-text>
+
+                            <button
+                              type="button"
+                              onClick={() => removeAccessory(ruleIndex, accessoryIndex)}
+                              style={dangerButtonStyle}
+                            >
+                              Remove
+                            </button>
+                          </s-box>
+
+                          <s-box display="flex" flexDirection="row" gap="base">
+                            <s-box flex="1">
+                              <label>
+                                <s-text as="p" fontWeight="medium">Accessory SKU</s-text>
+                                <input
+                                  value={accessory.sku}
+                                  onChange={(e) =>
+                                    updateAccessory(ruleIndex, accessoryIndex, {
+                                      sku: e.target.value,
+                                    })
+                                  }
+                                  placeholder="e.g. T54"
+                                  style={inputStyle}
+                                />
+                              </label>
+                            </s-box>
+
+                            <s-box flex="1">
+                              <label>
+                                <s-text as="p" fontWeight="medium">Discount amount</s-text>
+                                <input
+                                  value={accessory.discountAmount}
+                                  onChange={(e) =>
+                                    updateAccessory(ruleIndex, accessoryIndex, {
+                                      discountAmount: e.target.value,
+                                    })
+                                  }
+                                  placeholder="e.g. 30"
+                                  style={inputStyle}
+                                />
+                              </label>
+                            </s-box>
+
+                            <s-box flex="2">
+                              <label>
+                                <s-text as="p" fontWeight="medium">Label</s-text>
+                                <input
+                                  value={accessory.label}
+                                  onChange={(e) =>
+                                    updateAccessory(ruleIndex, accessoryIndex, {
+                                      label: e.target.value,
+                                    })
+                                  }
+                                  placeholder='e.g. Bag less R30'
+                                  style={inputStyle}
+                                />
+                              </label>
+                            </s-box>
+                          </s-box>
+                        </s-box>
+                      </s-box>
+                    ))}
+
+                    <s-box>
+                      <s-button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => addAccessory(ruleIndex)}
+                      >
+                        Add accessory
+                      </s-button>
+                    </s-box>
+                  </>
+                )}
               </s-box>
             </s-box>
-          </s-box>
-        ))}
+          );
+        })}
 
         <s-box display="flex" gap="base">
           <s-button type="button" variant="secondary" onClick={addRule}>
             Add rule
           </s-button>
 
-          <s-button variant="primary" type="submit" disabled={isSubmitting}>
+          <s-button
+            variant="primary"
+            type="submit"
+            disabled={isSubmitting || validationErrors.length > 0}
+          >
             {isSubmitting ? "Saving…" : "Save rules"}
           </s-button>
         </s-box>
@@ -677,4 +884,20 @@ const inputStyle = {
   padding: "8px",
   borderRadius: "4px",
   border: "1px solid #c4cdd5",
+};
+
+const plainButtonStyle = {
+  background: "transparent",
+  border: "none",
+  color: "#2c6ecb",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const dangerButtonStyle = {
+  background: "transparent",
+  border: "none",
+  color: "#b42318",
+  cursor: "pointer",
+  fontWeight: 600,
 };
