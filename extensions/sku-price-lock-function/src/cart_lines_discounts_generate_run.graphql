@@ -2,6 +2,7 @@ query RunInput {
   cart {
     lines {
       id
+      quantity
       attribute(key: "Condition") {
         value
       }
