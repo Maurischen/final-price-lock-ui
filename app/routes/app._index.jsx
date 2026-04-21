@@ -135,6 +135,20 @@ export default function AppIndex() {
 
       <s-section>
         <s-paragraph>
+          Need to manage <strong>Laptop Bundle Discounts</strong> with trigger
+          SKUs, accessory SKUs, and discount amounts? Open the bundle rules
+          panel below.
+        </s-paragraph>
+
+        <Form method="get" action="/app/bundle-discounts">
+          <s-button variant="secondary" type="submit">
+            Open Bundle Discount Rules
+          </s-button>
+        </Form>
+      </s-section>
+
+      <s-section>
+        <s-paragraph>
           Need to update the <strong>Stock Availability</strong> metafield based
           on online and store stock? Open the sync tool below.
         </s-paragraph>
