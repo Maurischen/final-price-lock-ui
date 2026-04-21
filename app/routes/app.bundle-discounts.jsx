@@ -32,14 +32,14 @@ query FindBundleDiscounts {
   discountNodes(first: 50, query: "type:app") {
     nodes {
       id
+      metafield(namespace: "${NAMESPACE}", key: "${KEY}") {
+        jsonValue
+      }
       discount {
         __typename
         ... on DiscountAutomaticApp {
           title
           status
-          metafield(namespace: "${NAMESPACE}", key: "${KEY}") {
-            jsonValue
-          }
         }
       }
     }
@@ -202,7 +202,7 @@ async function findOrCreateBundleDiscount(admin) {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
-        config: normalizeConfig(discount.metafield?.jsonValue),
+        config: normalizeConfig(node.metafield?.jsonValue),
       };
     }
   }
