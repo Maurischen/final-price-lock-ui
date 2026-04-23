@@ -1,8 +1,5 @@
 import db from "../db.server";
 
-/**
- * Checks if a rule is currently active and within its schedule window.
- */
 function isRuleLive(rule, now = new Date()) {
   if (!rule?.isActive) return false;
   if (rule.startsAt && now < new Date(rule.startsAt)) return false;
@@ -10,68 +7,33 @@ function isRuleLive(rule, now = new Date()) {
   return true;
 }
 
-/**
- * Normalize strings for safer SKU / tag comparisons.
- */
 function normalizeString(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-/**
- * Convert a rule into a normalized offers[] array.
- * Supports:
- * - new child-table offerProducts[]
- * - legacy single-offer fields
- */
 function getRuleOffers(rule) {
-  if (Array.isArray(rule?.offerProducts) && rule.offerProducts.length > 0) {
-    return rule.offerProducts
-      .filter((offer) => offer?.isActive !== false)
-      .sort((a, b) => (a.position || 0) - (b.position || 0))
-      .map((offer) => ({
-        id: offer.id,
-        mode: offer.offerMode,
-        productId: offer.offerProductId,
-        variantId: offer.offerVariantId,
-        sku: offer.offerSku,
-        titleOverride: offer.offerTitleOverride,
-        message: offer.offerMessage,
-        discount: {
-          mode: offer.discountMode,
-          value: offer.discountValue,
-          label: offer.discountLabel,
-        },
-        rawOffer: offer,
-      }));
-  }
+  if (!Array.isArray(rule?.offerProducts)) return [];
 
-  // legacy single-offer fallback
-  if (rule?.offerProductId || rule?.offerVariantId || rule?.offerSku) {
-    return [
-      {
-        id: null,
-        mode: rule.offerMode,
-        productId: rule.offerProductId,
-        variantId: rule.offerVariantId,
-        sku: rule.offerSku,
-        titleOverride: rule.offerTitleOverride,
-        message: rule.offerMessage,
-        discount: {
-          mode: rule.discountMode,
-          value: rule.discountValue,
-          label: rule.discountLabel,
-        },
-        rawOffer: null,
+  return rule.offerProducts
+    .filter((offer) => offer?.isActive !== false)
+    .sort((a, b) => (a.position || 0) - (b.position || 0))
+    .map((offer) => ({
+      id: offer.id,
+      mode: offer.offerMode,
+      productId: offer.offerProductId,
+      variantId: offer.offerVariantId,
+      sku: offer.offerSku,
+      titleOverride: offer.offerTitleOverride,
+      message: offer.offerMessage,
+      discount: {
+        mode: offer.discountMode,
+        value: offer.discountValue,
+        label: offer.discountLabel,
       },
-    ];
-  }
-
-  return [];
+      rawOffer: offer,
+    }));
 }
 
-/**
- * Checks whether cart already contains a specific offer.
- */
 function cartAlreadyHasOffer(cart, offer) {
   const lines = Array.isArray(cart?.lines) ? cart.lines : [];
 
@@ -87,10 +49,6 @@ function cartAlreadyHasOffer(cart, offer) {
   });
 }
 
-/**
- * Product-context match:
- * Used for PRODUCT_PAGE or other single-product lookups.
- */
 function matchesProductContext(rule, context) {
   const productId = context?.productId || null;
   const variantId = context?.variantId || null;
@@ -100,45 +58,27 @@ function matchesProductContext(rule, context) {
   switch (rule.triggerMode) {
     case "PRODUCT":
       return !!rule.triggerProductId && rule.triggerProductId === productId;
-
     case "VARIANT":
       return !!rule.triggerVariantId && rule.triggerVariantId === variantId;
-
     case "SKU":
-      return (
-        !!rule.triggerSku &&
-        normalizeString(rule.triggerSku) === normalizeString(sku)
-      );
-
+      return !!rule.triggerSku && normalizeString(rule.triggerSku) === normalizeString(sku);
     case "TAG":
       return tags.map(normalizeString).includes(normalizeString(rule.triggerTag));
-
     case "CART_VALUE":
       return false;
-
     default:
       return false;
   }
 }
 
-/**
- * Cart-context match:
- * Used for cart page / cart drawer upsells.
- */
 function matchesCartContext(rule, context) {
   const cart = context?.cart || {};
   const lines = Array.isArray(cart?.lines) ? cart.lines : [];
   const subtotal = Number(cart?.subtotalAmount || 0);
 
   if (rule.triggerMode === "CART_VALUE") {
-    if (rule.minCartValue != null && subtotal < Number(rule.minCartValue)) {
-      return false;
-    }
-
-    if (rule.maxCartValue != null && subtotal > Number(rule.maxCartValue)) {
-      return false;
-    }
-
+    if (rule.minCartValue != null && subtotal < Number(rule.minCartValue)) return false;
+    if (rule.maxCartValue != null && subtotal > Number(rule.maxCartValue)) return false;
     return true;
   }
 
@@ -153,10 +93,6 @@ function matchesCartContext(rule, context) {
   });
 }
 
-/**
- * Main resolver for storefront/admin preview use.
- * Supports multiple offers per rule.
- */
 export async function resolveUpsells({ shop, placement, context = {} }) {
   if (!shop || !placement) {
     return {
@@ -195,11 +131,8 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
     .map((rule) => {
       const offers = getRuleOffers(rule).filter((offer) => {
         if (rule.hideIfOfferInCart && context?.cart) {
-          if (cartAlreadyHasOffer(context.cart, offer)) {
-            return false;
-          }
+          return !cartAlreadyHasOffer(context.cart, offer);
         }
-
         return true;
       });
 
@@ -210,8 +143,6 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
         placement: rule.placement,
         priority: rule.priority,
         offers,
-        // legacy single-offer compatibility for old frontend code
-        offer: offers[0] || null,
         rawRule: rule,
       };
     })
@@ -224,9 +155,6 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
   };
 }
 
-/**
- * Optional helper to preview a single product context.
- */
 export async function resolveProductPageUpsells({
   shop,
   productId = null,
@@ -248,9 +176,6 @@ export async function resolveProductPageUpsells({
   });
 }
 
-/**
- * Optional helper to preview cart context.
- */
 export async function resolveCartUpsells({
   shop,
   cart,

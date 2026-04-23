@@ -21,28 +21,14 @@ export async function loader({ request }) {
       context: { sku },
     });
 
-    // Support both new multi-offer rules and old single-offer rules
-    const offerEntries = [];
-
-    for (const rule of result.rules || []) {
-      if (Array.isArray(rule.offers) && rule.offers.length > 0) {
-        for (const offer of rule.offers) {
-          if (offer?.sku) {
-            offerEntries.push({
-              ruleId: rule.id,
-              sku: offer.sku,
-            });
-          }
-        }
-      } else if (rule.offer?.sku) {
-        offerEntries.push({
-          ruleId: rule.id,
-          sku: rule.offer.sku,
-        });
-      }
-    }
-
-    const offerSkus = [...new Set(offerEntries.map((entry) => entry.sku).filter(Boolean))];
+    const offerSkus = [
+      ...new Set(
+        (result.rules || [])
+          .flatMap((rule) => rule.offers || [])
+          .map((offer) => offer?.sku)
+          .filter(Boolean),
+      ),
+    ];
 
     let productsBySku = {};
 
@@ -101,27 +87,13 @@ export async function loader({ request }) {
       }
     }
 
-    const rules = (result.rules || []).map((rule) => {
-      // New multi-offer shape
-      if (Array.isArray(rule.offers) && rule.offers.length > 0) {
-        return {
-          ...rule,
-          offers: rule.offers.map((offer) => ({
-            ...offer,
-            product: offer?.sku ? productsBySku[offer.sku] || null : null,
-          })),
-        };
-      }
-
-      // Legacy single-offer shape
-      return {
-        ...rule,
-        offer: {
-          ...rule.offer,
-          product: rule.offer?.sku ? productsBySku[rule.offer.sku] || null : null,
-        },
-      };
-    });
+    const rules = (result.rules || []).map((rule) => ({
+      ...rule,
+      offers: (rule.offers || []).map((offer) => ({
+        ...offer,
+        product: offer?.sku ? productsBySku[offer.sku] || null : null,
+      })),
+    }));
 
     return Response.json({
       ok: true,

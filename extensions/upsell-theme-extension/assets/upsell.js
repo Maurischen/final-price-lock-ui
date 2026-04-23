@@ -13,9 +13,7 @@ function normalizeVariantId(variantId) {
 
 async function getCart() {
   const response = await fetch("/cart.js", {
-    headers: {
-      Accept: "application/json",
-    },
+    headers: { Accept: "application/json" },
   });
 
   if (!response.ok) {
@@ -32,13 +30,17 @@ function isProductInCart(cart, product) {
 
   return cart.items.some((item) => {
     const itemVariantId = normalizeVariantId(item.variant_id || item.id);
+
     const sameVariant =
-      normalizedVariantId && itemVariantId && String(itemVariantId) === String(normalizedVariantId);
+      normalizedVariantId &&
+      itemVariantId &&
+      String(itemVariantId) === String(normalizedVariantId);
 
     const sameSku =
       product.sku &&
       item.sku &&
-      String(product.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase();
+      String(product.sku).trim().toLowerCase() ===
+        String(item.sku).trim().toLowerCase();
 
     return sameVariant || sameSku;
   });
@@ -71,8 +73,7 @@ async function addUpsellToCart(variantId, button) {
       throw new Error(`Cart add failed: ${response.status}`);
     }
 
-    const data = await response.json();
-    console.log("Upsell added:", data);
+    await response.json();
 
     button.textContent = "In Cart";
     button.disabled = true;
@@ -86,23 +87,8 @@ async function addUpsellToCart(variantId, button) {
   }
 }
 
-function renderRule(rule, inCart = false) {
-  const product = rule.offer?.product;
-
-  if (!product) {
-    return `
-      <div class="upsell-item">
-        <div class="upsell-item__info">
-          <div class="upsell-item__name">${rule.offer?.sku || "Recommended add-on"}</div>
-          ${
-            rule.offer?.message
-              ? `<div class="upsell-item__message">${rule.offer.message}</div>`
-              : ""
-          }
-        </div>
-      </div>
-    `;
-  }
+function renderOffer(offer, product) {
+  if (!product) return "";
 
   const imageMarkup = product.image
     ? `<img class="upsell-item__image" src="${product.image}" alt="${product.imageAlt || product.title}">`
@@ -112,22 +98,15 @@ function renderRule(rule, inCart = false) {
     ? `<div class="upsell-item__price">${moneyFormat(product.price)}</div>`
     : "";
 
-  const messageMarkup = rule.offer?.message
-    ? `<div class="upsell-item__message">${rule.offer.message}</div>`
+  const messageMarkup = offer?.message
+    ? `<div class="upsell-item__message">${offer.message}</div>`
     : "";
 
-  let buttonLabel = "Add";
-  let disabledAttr = "";
-  let extraClass = "";
+  const disabledAttr =
+    !product.availableForSale || !product.variantId ? "disabled" : "";
 
-  if (!product.availableForSale || !product.variantId) {
-    buttonLabel = "Unavailable";
-    disabledAttr = "disabled";
-  } else if (inCart) {
-    buttonLabel = "In Cart";
-    disabledAttr = "disabled";
-    extraClass = " upsell-item__button--in-cart";
-  }
+  const buttonLabel =
+    !product.availableForSale || !product.variantId ? "Unavailable" : "Add";
 
   return `
     <div class="upsell-item">
@@ -139,7 +118,7 @@ function renderRule(rule, inCart = false) {
       </div>
       <button
         type="button"
-        class="upsell-item__button${extraClass}"
+        class="upsell-item__button"
         data-variant-id="${product.variantId || ""}"
         ${disabledAttr}
       >
@@ -173,20 +152,26 @@ async function initUpsellBlocks(root = document) {
 
       const data = await upsellRes.json();
 
-      console.log("Upsell block response for SKU", sku, data);
-      console.log("Cart data", cart);
-
       if (!data || !data.rules || !data.rules.length) {
         content.innerHTML = `<div class="upsell-empty">No recommendations available.</div>`;
         continue;
       }
 
-      const visibleRules = data.rules.filter((rule) => {
-        const product = rule.offer?.product;
-        return !isProductInCart(cart, product);
-      });
+      const renderedOffers = [];
 
-      if (!visibleRules.length) {
+      for (const rule of data.rules) {
+        const offers = Array.isArray(rule.offers) ? rule.offers : [];
+
+        for (const offer of offers) {
+          const product = offer?.product;
+          if (!product) continue;
+          if (isProductInCart(cart, product)) continue;
+
+          renderedOffers.push(renderOffer(offer, product));
+        }
+      }
+
+      if (!renderedOffers.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
         if (wrapper) {
           wrapper.style.display = "none";
@@ -196,7 +181,7 @@ async function initUpsellBlocks(root = document) {
         continue;
       }
 
-      content.innerHTML = visibleRules.map((rule) => renderRule(rule, false)).join("");
+      content.innerHTML = renderedOffers.join("");
 
       content.querySelectorAll(".upsell-item__button").forEach((button) => {
         button.addEventListener("click", () => {

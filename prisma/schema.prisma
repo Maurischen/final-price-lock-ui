@@ -135,46 +135,34 @@ model ProductAuditScan {
 }
 
 model UpsellRule {
-  id                     String   @id @default(cuid())
-  shop                   String
-  name                   String
-  type                   UpsellRuleType
-  placement              UpsellPlacement
-  triggerMode            UpsellTriggerMode
+  id                    String   @id @default(cuid())
+  shop                  String
+  name                  String
+  type                  UpsellRuleType
+  placement             UpsellPlacement
+  triggerMode           UpsellTriggerMode
 
-  triggerProductId       String?
-  triggerVariantId       String?
-  triggerSku             String?
-  triggerTag             String?
+  triggerProductId      String?
+  triggerVariantId      String?
+  triggerSku            String?
+  triggerTag            String?
 
-  minCartValue           Float?
-  maxCartValue           Float?
+  minCartValue          Float?
+  maxCartValue          Float?
 
-  // legacy single-offer fields kept for backward compatibility
-  offerMode              UpsellOfferMode
-  offerProductId         String?
-  offerVariantId         String?
-  offerSku               String?
+  priority              Int      @default(100)
+  isActive              Boolean  @default(true)
+  limitOnePerCart       Boolean  @default(true)
+  hideIfOfferInCart     Boolean  @default(true)
+  hideIfOfferOutOfStock Boolean  @default(true)
 
-  offerTitleOverride     String?
-  offerMessage           String?
-  discountMode           UpsellDiscountMode @default(NONE)
-  discountValue          Float?
-  discountLabel          String?
+  startsAt              DateTime?
+  endsAt                DateTime?
 
-  priority               Int      @default(100)
-  isActive               Boolean  @default(true)
-  limitOnePerCart        Boolean  @default(true)
-  hideIfOfferInCart      Boolean  @default(true)
-  hideIfOfferOutOfStock  Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  startsAt               DateTime?
-  endsAt                 DateTime?
-
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-
-  offerProducts          UpsellOfferProduct[]
+  offerProducts         UpsellOfferProduct[]
 
   @@index([shop])
   @@index([shop, isActive])

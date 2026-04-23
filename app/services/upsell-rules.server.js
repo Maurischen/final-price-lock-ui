@@ -1,17 +1,11 @@
 import db from "../db.server";
 
-/**
- * Normalizes blank string values to null so Prisma stores cleaner data.
- */
 function emptyToNull(value) {
   if (value === undefined || value === null) return null;
   const str = String(value).trim();
   return str === "" ? null : str;
 }
 
-/**
- * Converts truthy form values safely to booleans.
- */
 function toBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -19,29 +13,39 @@ function toBoolean(value, fallback = false) {
   return ["true", "1", "yes", "on"].includes(normalized);
 }
 
-/**
- * Converts numeric input safely to number or null.
- */
 function toNumber(value) {
   if (value === undefined || value === null || value === "") return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 }
 
-/**
- * Converts date input safely to Date or null.
- */
 function toDate(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/**
- * Builds a clean Prisma payload for UpsellRule create/update.
- * Accepts plain objects from formData or JSON.
- */
+function normalizeOfferInput(offer = {}, index = 0) {
+  return {
+    position: Number.isFinite(index) ? index : 0,
+    offerMode: emptyToNull(offer.offerMode) || "SKU",
+    offerProductId: emptyToNull(offer.offerProductId),
+    offerVariantId: emptyToNull(offer.offerVariantId),
+    offerSku: emptyToNull(offer.offerSku),
+    offerTitleOverride: emptyToNull(offer.offerTitleOverride),
+    offerMessage: emptyToNull(offer.offerMessage),
+    discountMode: emptyToNull(offer.discountMode) || "NONE",
+    discountValue: toNumber(offer.discountValue),
+    discountLabel: emptyToNull(offer.discountLabel),
+    isActive: offer.isActive === undefined ? true : toBoolean(offer.isActive, true),
+  };
+}
+
 export function normalizeUpsellRuleInput(input = {}) {
+  const offers = Array.isArray(input.offers)
+    ? input.offers.map((offer, index) => normalizeOfferInput(offer, index))
+    : [];
+
   return {
     name: emptyToNull(input.name),
     type: emptyToNull(input.type),
@@ -56,18 +60,6 @@ export function normalizeUpsellRuleInput(input = {}) {
     minCartValue: toNumber(input.minCartValue),
     maxCartValue: toNumber(input.maxCartValue),
 
-    offerMode: emptyToNull(input.offerMode),
-    offerProductId: emptyToNull(input.offerProductId),
-    offerVariantId: emptyToNull(input.offerVariantId),
-    offerSku: emptyToNull(input.offerSku),
-
-    offerTitleOverride: emptyToNull(input.offerTitleOverride),
-    offerMessage: emptyToNull(input.offerMessage),
-
-    discountMode: emptyToNull(input.discountMode) || "NONE",
-    discountValue: toNumber(input.discountValue),
-    discountLabel: emptyToNull(input.discountLabel),
-
     priority: toNumber(input.priority) ?? 100,
     isActive: toBoolean(input.isActive, true),
     limitOnePerCart: toBoolean(input.limitOnePerCart, true),
@@ -76,12 +68,11 @@ export function normalizeUpsellRuleInput(input = {}) {
 
     startsAt: toDate(input.startsAt),
     endsAt: toDate(input.endsAt),
+
+    offers,
   };
 }
 
-/**
- * Basic validation for required fields and common logic issues.
- */
 export function validateUpsellRuleInput(input = {}) {
   const errors = {};
 
@@ -89,7 +80,6 @@ export function validateUpsellRuleInput(input = {}) {
   if (!input.type) errors.type = "Type is required.";
   if (!input.placement) errors.placement = "Placement is required.";
   if (!input.triggerMode) errors.triggerMode = "Trigger mode is required.";
-  if (!input.offerMode) errors.offerMode = "Offer mode is required.";
 
   switch (input.triggerMode) {
     case "PRODUCT":
@@ -121,46 +111,78 @@ export function validateUpsellRuleInput(input = {}) {
       break;
   }
 
-  switch (input.offerMode) {
-    case "PRODUCT":
-      if (!input.offerProductId) {
-        errors.offerProductId = "Offer product is required for PRODUCT mode.";
-      }
-      break;
-    case "VARIANT":
-      if (!input.offerVariantId) {
-        errors.offerVariantId = "Offer variant is required for VARIANT mode.";
-      }
-      break;
-    case "SKU":
-      if (!input.offerSku) {
-        errors.offerSku = "Offer SKU is required for SKU mode.";
-      }
-      break;
-    default:
-      break;
-  }
-
-  if (
-    input.startsAt &&
-    input.endsAt &&
-    new Date(input.startsAt).getTime() > new Date(input.endsAt).getTime()
-  ) {
-    errors.endsAt = "End date must be after start date.";
-  }
-
-  if (input.discountMode && input.discountMode !== "NONE") {
-    if (input.discountValue == null || Number(input.discountValue) <= 0) {
-      errors.discountValue = "Discount value must be greater than 0.";
+  if (input.startsAt && input.endsAt) {
+    if (new Date(input.startsAt).getTime() > new Date(input.endsAt).getTime()) {
+      errors.endsAt = "End date must be after start date.";
     }
   }
 
+  if (!Array.isArray(input.offers) || input.offers.length === 0) {
+    errors.offers = "At least one offer product is required.";
+    return errors;
+  }
+
+  input.offers.forEach((offer, index) => {
+    switch (offer.offerMode) {
+      case "PRODUCT":
+        if (!offer.offerProductId) {
+          errors[`offers.${index}.offerProductId`] =
+            `Offer ${index + 1}: product ID is required for PRODUCT mode.`;
+        }
+        break;
+      case "VARIANT":
+        if (!offer.offerVariantId) {
+          errors[`offers.${index}.offerVariantId`] =
+            `Offer ${index + 1}: variant ID is required for VARIANT mode.`;
+        }
+        break;
+      case "SKU":
+        if (!offer.offerSku) {
+          errors[`offers.${index}.offerSku`] =
+            `Offer ${index + 1}: SKU is required for SKU mode.`;
+        }
+        break;
+      default:
+        errors[`offers.${index}.offerMode`] =
+          `Offer ${index + 1}: offer mode is required.`;
+    }
+
+    if (offer.discountMode && offer.discountMode !== "NONE") {
+      if (offer.discountValue == null || Number(offer.discountValue) <= 0) {
+        errors[`offers.${index}.discountValue`] =
+          `Offer ${index + 1}: discount value must be greater than 0.`;
+      }
+    }
+  });
+
   return errors;
+}
+
+function buildOfferCreates(normalized) {
+  return normalized.offers.map((offer, index) => ({
+    position: index,
+    offerMode: offer.offerMode,
+    offerProductId: offer.offerProductId,
+    offerVariantId: offer.offerVariantId,
+    offerSku: offer.offerSku,
+    offerTitleOverride: offer.offerTitleOverride,
+    offerMessage: offer.offerMessage,
+    discountMode: offer.discountMode,
+    discountValue: offer.discountValue,
+    discountLabel: offer.discountLabel,
+    isActive: offer.isActive,
+  }));
 }
 
 export async function listUpsellRules(shop) {
   return db.upsellRule.findMany({
     where: { shop },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
     orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
   });
 }
@@ -170,6 +192,12 @@ export async function getUpsellRuleById(id, shop) {
 
   return db.upsellRule.findFirst({
     where: { id, shop },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 }
 
@@ -178,23 +206,47 @@ export async function createUpsellRule(shop, rawInput) {
   const errors = validateUpsellRuleInput(normalized);
 
   if (Object.keys(errors).length > 0) {
-    return {
-      ok: false,
-      errors,
-    };
+    return { ok: false, errors };
   }
 
   const rule = await db.upsellRule.create({
     data: {
       shop,
-      ...normalized,
+      name: normalized.name,
+      type: normalized.type,
+      placement: normalized.placement,
+      triggerMode: normalized.triggerMode,
+
+      triggerProductId: normalized.triggerProductId,
+      triggerVariantId: normalized.triggerVariantId,
+      triggerSku: normalized.triggerSku,
+      triggerTag: normalized.triggerTag,
+
+      minCartValue: normalized.minCartValue,
+      maxCartValue: normalized.maxCartValue,
+
+      priority: normalized.priority,
+      isActive: normalized.isActive,
+      limitOnePerCart: normalized.limitOnePerCart,
+      hideIfOfferInCart: normalized.hideIfOfferInCart,
+      hideIfOfferOutOfStock: normalized.hideIfOfferOutOfStock,
+
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+
+      offerProducts: {
+        create: buildOfferCreates(normalized),
+      },
+    },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
     },
   });
 
-  return {
-    ok: true,
-    rule,
-  };
+  return { ok: true, rule };
 }
 
 export async function updateUpsellRule(id, shop, rawInput) {
@@ -203,9 +255,7 @@ export async function updateUpsellRule(id, shop, rawInput) {
   if (!existing) {
     return {
       ok: false,
-      errors: {
-        general: "Upsell rule not found.",
-      },
+      errors: { general: "Upsell rule not found." },
     };
   }
 
@@ -213,71 +263,90 @@ export async function updateUpsellRule(id, shop, rawInput) {
   const errors = validateUpsellRuleInput(normalized);
 
   if (Object.keys(errors).length > 0) {
-    return {
-      ok: false,
-      errors,
-    };
+    return { ok: false, errors };
   }
 
   const rule = await db.upsellRule.update({
     where: { id: existing.id },
-    data: normalized,
+    data: {
+      name: normalized.name,
+      type: normalized.type,
+      placement: normalized.placement,
+      triggerMode: normalized.triggerMode,
+
+      triggerProductId: normalized.triggerProductId,
+      triggerVariantId: normalized.triggerVariantId,
+      triggerSku: normalized.triggerSku,
+      triggerTag: normalized.triggerTag,
+
+      minCartValue: normalized.minCartValue,
+      maxCartValue: normalized.maxCartValue,
+
+      priority: normalized.priority,
+      isActive: normalized.isActive,
+      limitOnePerCart: normalized.limitOnePerCart,
+      hideIfOfferInCart: normalized.hideIfOfferInCart,
+      hideIfOfferOutOfStock: normalized.hideIfOfferOutOfStock,
+
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+
+      offerProducts: {
+        deleteMany: {},
+        create: buildOfferCreates(normalized),
+      },
+    },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
-  return {
-    ok: true,
-    rule,
-  };
+  return { ok: true, rule };
 }
 
 export async function deleteUpsellRule(id, shop) {
   const existing = await getUpsellRuleById(id, shop);
 
   if (!existing) {
-    return {
-      ok: false,
-      error: "Upsell rule not found.",
-    };
+    return { ok: false, error: "Upsell rule not found." };
   }
 
   await db.upsellRule.delete({
     where: { id: existing.id },
   });
 
-  return {
-    ok: true,
-  };
+  return { ok: true };
 }
 
 export async function setUpsellRuleActive(id, shop, isActive) {
   const existing = await getUpsellRuleById(id, shop);
 
   if (!existing) {
-    return {
-      ok: false,
-      error: "Upsell rule not found.",
-    };
+    return { ok: false, error: "Upsell rule not found." };
   }
 
   const rule = await db.upsellRule.update({
     where: { id: existing.id },
     data: { isActive: Boolean(isActive) },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
-  return {
-    ok: true,
-    rule,
-  };
+  return { ok: true, rule };
 }
 
 export async function duplicateUpsellRule(id, shop) {
   const existing = await getUpsellRuleById(id, shop);
 
   if (!existing) {
-    return {
-      ok: false,
-      error: "Upsell rule not found.",
-    };
+    return { ok: false, error: "Upsell rule not found." };
   }
 
   const copy = await db.upsellRule.create({
@@ -287,33 +356,47 @@ export async function duplicateUpsellRule(id, shop) {
       type: existing.type,
       placement: existing.placement,
       triggerMode: existing.triggerMode,
+
       triggerProductId: existing.triggerProductId,
       triggerVariantId: existing.triggerVariantId,
       triggerSku: existing.triggerSku,
       triggerTag: existing.triggerTag,
+
       minCartValue: existing.minCartValue,
       maxCartValue: existing.maxCartValue,
-      offerMode: existing.offerMode,
-      offerProductId: existing.offerProductId,
-      offerVariantId: existing.offerVariantId,
-      offerSku: existing.offerSku,
-      offerTitleOverride: existing.offerTitleOverride,
-      offerMessage: existing.offerMessage,
-      discountMode: existing.discountMode,
-      discountValue: existing.discountValue,
-      discountLabel: existing.discountLabel,
+
       priority: existing.priority,
       isActive: false,
       limitOnePerCart: existing.limitOnePerCart,
       hideIfOfferInCart: existing.hideIfOfferInCart,
       hideIfOfferOutOfStock: existing.hideIfOfferOutOfStock,
+
       startsAt: existing.startsAt,
       endsAt: existing.endsAt,
+
+      offerProducts: {
+        create: (existing.offerProducts || []).map((offer, index) => ({
+          position: index,
+          offerMode: offer.offerMode,
+          offerProductId: offer.offerProductId,
+          offerVariantId: offer.offerVariantId,
+          offerSku: offer.offerSku,
+          offerTitleOverride: offer.offerTitleOverride,
+          offerMessage: offer.offerMessage,
+          discountMode: offer.discountMode,
+          discountValue: offer.discountValue,
+          discountLabel: offer.discountLabel,
+          isActive: offer.isActive,
+        })),
+      },
+    },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
     },
   });
 
-  return {
-    ok: true,
-    rule: copy,
-  };
+  return { ok: true, rule: copy };
 }

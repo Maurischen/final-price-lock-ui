@@ -155,23 +155,7 @@ export async function action({ request }) {
 }
 
 function RuleCard({ rule }) {
-  const offers =
-    Array.isArray(rule.offerProducts) && rule.offerProducts.length > 0
-      ? rule.offerProducts
-      : rule.offerSku || rule.offerProductId || rule.offerVariantId
-        ? [
-            {
-              offerMode: rule.offerMode,
-              offerSku: rule.offerSku,
-              offerProductId: rule.offerProductId,
-              offerVariantId: rule.offerVariantId,
-              offerMessage: rule.offerMessage,
-              discountMode: rule.discountMode,
-              discountValue: rule.discountValue,
-              discountLabel: rule.discountLabel,
-            },
-          ]
-        : [];
+  const offers = Array.isArray(rule.offerProducts) ? rule.offerProducts : [];
 
   return (
     <Card>
@@ -223,24 +207,16 @@ function RuleCard({ rule }) {
           </Text>
 
           {rule.triggerProductId ? (
-            <Text as="p" variant="bodySm">
-              Product ID: {rule.triggerProductId}
-            </Text>
+            <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
           ) : null}
           {rule.triggerVariantId ? (
-            <Text as="p" variant="bodySm">
-              Variant ID: {rule.triggerVariantId}
-            </Text>
+            <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
           ) : null}
           {rule.triggerSku ? (
-            <Text as="p" variant="bodySm">
-              SKU: {rule.triggerSku}
-            </Text>
+            <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
           ) : null}
           {rule.triggerTag ? (
-            <Text as="p" variant="bodySm">
-              Tag: {rule.triggerTag}
-            </Text>
+            <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
           ) : null}
           {(rule.minCartValue != null || rule.maxCartValue != null) && (
             <Text as="p" variant="bodySm">
@@ -264,26 +240,17 @@ function RuleCard({ rule }) {
                   <Text as="p" variant="bodySm">
                     <strong>Offer {index + 1}:</strong> {offer.offerMode}
                   </Text>
-
                   {offer.offerProductId ? (
-                    <Text as="p" variant="bodySm">
-                      Product ID: {offer.offerProductId}
-                    </Text>
+                    <Text as="p" variant="bodySm">Product ID: {offer.offerProductId}</Text>
                   ) : null}
                   {offer.offerVariantId ? (
-                    <Text as="p" variant="bodySm">
-                      Variant ID: {offer.offerVariantId}
-                    </Text>
+                    <Text as="p" variant="bodySm">Variant ID: {offer.offerVariantId}</Text>
                   ) : null}
                   {offer.offerSku ? (
-                    <Text as="p" variant="bodySm">
-                      SKU: {offer.offerSku}
-                    </Text>
+                    <Text as="p" variant="bodySm">SKU: {offer.offerSku}</Text>
                   ) : null}
                   {offer.offerMessage ? (
-                    <Text as="p" variant="bodySm">
-                      Message: {offer.offerMessage}
-                    </Text>
+                    <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
                   ) : null}
                   {offer.discountMode !== "NONE" ? (
                     <Text as="p" variant="bodySm">
@@ -362,10 +329,7 @@ export default function UpsellsPage() {
   }, [formState.offers.length]);
 
   function setField(field, value) {
-    setFormState((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormState((prev) => ({ ...prev, [field]: value }));
   }
 
   function updateOffer(index, field, value) {
@@ -397,7 +361,10 @@ export default function UpsellsPage() {
     submit(
       {
         intent: "create",
-        payload: JSON.stringify(formState),
+        payload: JSON.stringify({
+          ...formState,
+          offers: formState.offers || [],
+        }),
       },
       { method: "post" },
     );
@@ -525,41 +492,41 @@ export default function UpsellsPage() {
                     />
                   </div>
 
-                  {(formState.triggerMode === "SKU") && (
+                  {formState.triggerMode === "SKU" ? (
                     <TextField
                       label="Trigger SKU"
                       value={formState.triggerSku}
                       onChange={(value) => setField("triggerSku", value)}
                       autoComplete="off"
                     />
-                  )}
+                  ) : null}
 
-                  {(formState.triggerMode === "PRODUCT") && (
+                  {formState.triggerMode === "PRODUCT" ? (
                     <TextField
                       label="Trigger product ID"
                       value={formState.triggerProductId}
                       onChange={(value) => setField("triggerProductId", value)}
                       autoComplete="off"
                     />
-                  )}
+                  ) : null}
 
-                  {(formState.triggerMode === "VARIANT") && (
+                  {formState.triggerMode === "VARIANT" ? (
                     <TextField
                       label="Trigger variant ID"
                       value={formState.triggerVariantId}
                       onChange={(value) => setField("triggerVariantId", value)}
                       autoComplete="off"
                     />
-                  )}
+                  ) : null}
 
-                  {(formState.triggerMode === "TAG") && (
+                  {formState.triggerMode === "TAG" ? (
                     <TextField
                       label="Trigger tag"
                       value={formState.triggerTag}
                       onChange={(value) => setField("triggerTag", value)}
                       autoComplete="off"
                     />
-                  )}
+                  ) : null}
                 </InlineStack>
 
                 {formState.triggerMode === "CART_VALUE" ? (
