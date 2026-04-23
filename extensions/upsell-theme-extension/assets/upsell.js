@@ -395,7 +395,7 @@ async function initUpsellBlocks(root = document) {
           <div class="upsell-bundle__hero">
             <div>
               <div class="upsell-bundle__eyebrow">Bundle & save</div>
-              <div class="upsell-bundle__headline">Complete your setup in one click</div>
+              <div class="upsell-bundle__headline">Bundle these essentials and save instantly</div>
             </div>
           </div>
 
