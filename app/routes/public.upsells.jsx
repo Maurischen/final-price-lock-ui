@@ -1,14 +1,17 @@
 import { resolveUpsells } from "../services/upsell-resolver.server";
 import { getProductsBySku } from "../services/upsell-products.server";
-import db from "../db.server";
+import { authenticate } from "../shopify.server";
 
 export async function loader({ request }) {
   const url = new URL(request.url);
   const sku = url.searchParams.get("sku");
-  const shop = url.searchParams.get("shop");
+
+  const shop =
+    request.headers.get("x-shopify-shop-domain") ||
+    url.searchParams.get("shop");
 
   if (!sku || !shop) {
-    return Response.json({ ok: false, error: "Missing params" });
+    return Response.json({ ok: false, error: "Missing sku or shop" }, { status: 400 });
   }
 
   const result = await resolveUpsells({
@@ -17,13 +20,5 @@ export async function loader({ request }) {
     context: { sku },
   });
 
-  const skus = result.rules.map(r => r.offer.sku).filter(Boolean);
-
-  // 🔴 IMPORTANT: we need admin API access — skip for now if needed
-  // For now just return rules
-
-  return Response.json({
-    ok: true,
-    rules: result.rules,
-  });
+  return Response.json(result);
 }
