@@ -87,6 +87,7 @@
   gap: 0;
 }
 
+/* Main row + addon rows use the same 3-column structure */
 .upsell-item {
   display: grid;
   grid-template-columns: 24px 72px minmax(0, 1fr);
@@ -110,16 +111,12 @@
   opacity: 0.82;
 }
 
-.upsell-item__check,
-.upsell-item__check--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .upsell-item__check {
   width: 24px;
   min-width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .upsell-item__check input {
@@ -127,13 +124,7 @@
   height: 18px;
   accent-color: #ff3131;
   cursor: pointer;
-}
-
-.upsell-item__check--placeholder {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  display: block;
+  margin: 0;
 }
 
 .upsell-item__image {
@@ -143,7 +134,7 @@
   border-radius: 10px;
   background: #fafafa;
   border: 1px solid #f0f0f0;
-  flex-shrink: 0;
+  display: block;
 }
 
 .upsell-item__image--placeholder {
@@ -151,11 +142,12 @@
 }
 
 .upsell-item__info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   min-width: 0;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
 }
 
 .upsell-item__name {
@@ -165,6 +157,7 @@
   color: #202223;
   white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 
@@ -173,6 +166,7 @@
   align-items: center;
   gap: 8px;
   margin-top: 2px;
+  flex-wrap: wrap;
 }
 
 .upsell-item__price {
@@ -212,6 +206,14 @@
   font-weight: 700;
 }
 
+/* Make main product row feel intentional */
+.upsell-bundle__section:first-of-type .upsell-item {
+  background: #fafafa;
+  border-radius: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
 .upsell-bundle__footer {
   display: flex;
   justify-content: space-between;
@@ -233,6 +235,7 @@
   gap: 10px;
   font-size: 14px;
   color: #3a3a3a;
+  flex-wrap: wrap;
 }
 
 .upsell-bundle__summary-row strong {
@@ -292,13 +295,6 @@
   min-width: 190px;
 }
 
-.upsell-bundle__section:first-of-type .upsell-item {
-  background: #fafafa;
-  border-radius: 10px;
-  padding-left: 8px;
-  padding-right: 8px;
-}
-
 @media screen and (max-width: 989px) {
   .upsell-bundle__footer {
     align-items: stretch;
@@ -330,8 +326,7 @@
     padding: 12px 0;
   }
 
-  .upsell-item__check,
-  .upsell-item__check--placeholder {
+  .upsell-item__check {
     width: 22px;
     min-width: 22px;
   }

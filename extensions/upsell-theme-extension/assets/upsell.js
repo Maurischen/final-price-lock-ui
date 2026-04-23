@@ -138,7 +138,16 @@ function renderBundleItem({
         <span></span>
       </label>
     `
-    : `<div class="upsell-item__check upsell-item__check--placeholder"></div>`;
+    : `
+      <label class="upsell-item__check">
+        <input
+          type="checkbox"
+          checked
+          disabled
+        >
+        <span></span>
+      </label>
+    `;
 
   return `
     <div class="upsell-item ${inCart ? "upsell-item--in-cart" : ""}">
