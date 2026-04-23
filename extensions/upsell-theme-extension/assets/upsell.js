@@ -11,6 +11,39 @@ function normalizeVariantId(variantId) {
   return match ? match[1] : variantId;
 }
 
+async function getCart() {
+  const response = await fetch("/cart.js", {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Cart fetch failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+function isProductInCart(cart, product) {
+  if (!cart?.items?.length || !product) return false;
+
+  const normalizedVariantId = normalizeVariantId(product.variantId);
+
+  return cart.items.some((item) => {
+    const itemVariantId = normalizeVariantId(item.variant_id || item.id);
+    const sameVariant =
+      normalizedVariantId && itemVariantId && String(itemVariantId) === String(normalizedVariantId);
+
+    const sameSku =
+      product.sku &&
+      item.sku &&
+      String(product.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase();
+
+    return sameVariant || sameSku;
+  });
+}
+
 async function addUpsellToCart(variantId, button) {
   const normalizedVariantId = normalizeVariantId(variantId);
   if (!normalizedVariantId) return;
@@ -41,12 +74,9 @@ async function addUpsellToCart(variantId, button) {
     const data = await response.json();
     console.log("Upsell added:", data);
 
-    button.textContent = "Added";
-
-    setTimeout(() => {
-      button.textContent = originalText;
-      button.disabled = false;
-    }, 1200);
+    button.textContent = "In Cart";
+    button.disabled = true;
+    button.classList.add("upsell-item__button--in-cart");
 
     document.dispatchEvent(new CustomEvent("cart:refresh"));
   } catch (error) {
@@ -56,7 +86,7 @@ async function addUpsellToCart(variantId, button) {
   }
 }
 
-function renderRule(rule) {
+function renderRule(rule, inCart = false) {
   const product = rule.offer?.product;
 
   if (!product) {
@@ -86,11 +116,18 @@ function renderRule(rule) {
     ? `<div class="upsell-item__message">${rule.offer.message}</div>`
     : "";
 
-  const disabledAttr =
-    !product.availableForSale || !product.variantId ? "disabled" : "";
+  let buttonLabel = "Add";
+  let disabledAttr = "";
+  let extraClass = "";
 
-  const buttonLabel =
-    !product.availableForSale || !product.variantId ? "Unavailable" : "Add";
+  if (!product.availableForSale || !product.variantId) {
+    buttonLabel = "Unavailable";
+    disabledAttr = "disabled";
+  } else if (inCart) {
+    buttonLabel = "In Cart";
+    disabledAttr = "disabled";
+    extraClass = " upsell-item__button--in-cart";
+  }
 
   return `
     <div class="upsell-item">
@@ -102,7 +139,7 @@ function renderRule(rule) {
       </div>
       <button
         type="button"
-        class="upsell-item__button"
+        class="upsell-item__button${extraClass}"
         data-variant-id="${product.variantId || ""}"
         ${disabledAttr}
       >
@@ -112,34 +149,54 @@ function renderRule(rule) {
   `;
 }
 
-function initUpsellBlocks(root = document) {
+async function initUpsellBlocks(root = document) {
   const blocks = root.querySelectorAll(".upsell-block");
 
-  blocks.forEach(async (block) => {
+  for (const block of blocks) {
     const sku = (block.dataset.sku || "").trim();
     const content = block.querySelector(".upsell-block__content");
 
-    if (!content) return;
+    if (!content) continue;
 
     if (!sku) {
       content.innerHTML = `<div class="upsell-empty">No SKU found on this product.</div>`;
-      return;
+      continue;
     }
 
     content.innerHTML = `<div class="upsell-loading">Loading recommendations...</div>`;
 
     try {
-      const res = await fetch(`/apps/upsell?sku=${encodeURIComponent(sku)}`);
-      const data = await res.json();
+      const [upsellRes, cart] = await Promise.all([
+        fetch(`/apps/upsell?sku=${encodeURIComponent(sku)}`),
+        getCart(),
+      ]);
+
+      const data = await upsellRes.json();
 
       console.log("Upsell block response for SKU", sku, data);
+      console.log("Cart data", cart);
 
       if (!data || !data.rules || !data.rules.length) {
         content.innerHTML = `<div class="upsell-empty">No recommendations available.</div>`;
-        return;
+        continue;
       }
 
-      content.innerHTML = data.rules.map(renderRule).join("");
+      const visibleRules = data.rules.filter((rule) => {
+        const product = rule.offer?.product;
+        return !isProductInCart(cart, product);
+      });
+
+      if (!visibleRules.length) {
+        const wrapper = block.querySelector(".upsell-block__inner");
+        if (wrapper) {
+          wrapper.style.display = "none";
+        } else {
+          block.style.display = "none";
+        }
+        continue;
+      }
+
+      content.innerHTML = visibleRules.map((rule) => renderRule(rule, false)).join("");
 
       content.querySelectorAll(".upsell-item__button").forEach((button) => {
         button.addEventListener("click", () => {
@@ -150,7 +207,7 @@ function initUpsellBlocks(root = document) {
       console.error("Upsell block error:", error);
       content.innerHTML = `<div class="upsell-error">Could not load recommendations.</div>`;
     }
-  });
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {

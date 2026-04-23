@@ -75,3 +75,8 @@
   background: #ccc;
   cursor: not-allowed;
 }
+
+.upsell-item__button--in-cart {
+  background: #999;
+  cursor: not-allowed;
+}
