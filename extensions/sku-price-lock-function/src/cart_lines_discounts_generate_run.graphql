@@ -1,4 +1,4 @@
-query RunInput {
+query CartInput {
   cart {
     lines {
       id
@@ -16,11 +16,13 @@ query RunInput {
         ... on ProductVariant {
           id
           sku
+          product {
+            id
+          }
         }
       }
     }
   }
-
   discount {
     metafield(namespace: "$app:bundle-discount", key: "function-configuration") {
       jsonValue

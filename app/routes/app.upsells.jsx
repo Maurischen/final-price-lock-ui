@@ -24,6 +24,7 @@ import {
   deleteUpsellRule,
   setUpsellRuleActive,
 } from "../services/upsell-rules.server";
+import { syncUpsellRulesToBundleDiscount } from "../services/upsell-discount-sync.server";
 
 const TYPE_OPTIONS = [
   { label: "Cross-sell", value: "CROSS_SELL" },
@@ -375,14 +376,27 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  async function syncIfOk(result) {
+    if (result?.ok) {
+      await syncUpsellRulesToBundleDiscount({
+        shop: session.shop,
+        admin,
+      });
+    }
+
+    return result;
+  }
 
   try {
     if (intent === "create") {
       const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await createUpsellRule(session.shop, payload);
+      const result = await syncIfOk(
+        await createUpsellRule(session.shop, payload),
+      );
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -392,7 +406,9 @@ export async function action({ request }) {
     if (intent === "update") {
       const id = formData.get("id");
       const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await updateUpsellRule(id, session.shop, payload);
+      const result = await syncIfOk(
+        await updateUpsellRule(id, session.shop, payload),
+      );
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -401,7 +417,9 @@ export async function action({ request }) {
 
     if (intent === "delete") {
       const id = formData.get("id");
-      const result = await deleteUpsellRule(id, session.shop);
+      const result = await syncIfOk(
+        await deleteUpsellRule(id, session.shop),
+      );
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -411,7 +429,9 @@ export async function action({ request }) {
     if (intent === "toggle-active") {
       const id = formData.get("id");
       const isActive = formData.get("isActive") === "true";
-      const result = await setUpsellRuleActive(id, session.shop, isActive);
+      const result = await syncIfOk(
+        await setUpsellRuleActive(id, session.shop, isActive),
+      );
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,

@@ -5,7 +5,6 @@ import {
 /**
  * @typedef {import("../generated/api").CartInput} CartInput
  * @typedef {import("../generated/api").CartLinesDiscountsGenerateRunResult} Result
- * @typedef {import("../generated/api").ProductDiscountCandidate} ProductDiscountCandidate
  */
 
 const OPEN_BOX_DISCOUNT_PERCENT = 25;
@@ -22,24 +21,43 @@ function getCartLineAttribute(cartLine) {
 }
 
 function formatAmount(amount) {
-  return amount.toFixed(2);
+  return Number(amount || 0).toFixed(2);
 }
 
-function getVariantSku(cartLine) {
+function normalize(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getVariant(cartLine) {
   const merchandise = cartLine.merchandise;
 
   if (!merchandise || merchandise.__typename !== "ProductVariant") {
     return null;
   }
 
-  return typeof merchandise.sku === "string" ? merchandise.sku : null;
+  return merchandise;
 }
 
-function getTotalQtyBySku(lines, sku) {
+function getVariantSku(cartLine) {
+  const variant = getVariant(cartLine);
+  return typeof variant?.sku === "string" ? variant.sku : null;
+}
+
+function getVariantId(cartLine) {
+  const variant = getVariant(cartLine);
+  return typeof variant?.id === "string" ? variant.id : null;
+}
+
+function getProductId(cartLine) {
+  const variant = getVariant(cartLine);
+  return typeof variant?.product?.id === "string" ? variant.product.id : null;
+}
+
+function getTotalQtyByRule(lines, rule) {
   let total = 0;
 
   for (const line of lines) {
-    if (getVariantSku(line) === sku) {
+    if (lineMatchesTrigger(line, rule)) {
       total += Number(line.quantity || 0);
     }
   }
@@ -67,9 +85,108 @@ function buildFixedAmountCandidate(lineId, quantity, discountAmount, message) {
   };
 }
 
+function buildPercentageCandidate(lineId, quantity, percentage, message) {
+  return {
+    message,
+    targets: [
+      {
+        cartLine: {
+          id: lineId,
+          quantity,
+        },
+      },
+    ],
+    value: {
+      percentage: {
+        value: String(Number(percentage || 0)),
+      },
+    },
+  };
+}
+
+function buildDiscountCandidate(lineId, quantity, accessory, message) {
+  const discountMode = accessory.discountMode || "FIXED";
+
+  if (discountMode === "PERCENTAGE") {
+    return buildPercentageCandidate(
+      lineId,
+      quantity,
+      accessory.discountPercentage || accessory.discountValue,
+      message,
+    );
+  }
+
+  return buildFixedAmountCandidate(
+    lineId,
+    quantity,
+    accessory.discountAmount || accessory.discountValue,
+    message,
+  );
+}
+
+function lineMatchesTrigger(line, rule) {
+  const sku = getVariantSku(line);
+  const variantId = getVariantId(line);
+  const productId = getProductId(line);
+
+  const triggerSkus = Array.isArray(rule.triggerSkus)
+    ? rule.triggerSkus
+    : rule.triggerSku
+      ? [rule.triggerSku]
+      : [];
+
+  const triggerVariantIds = Array.isArray(rule.triggerVariantIds)
+    ? rule.triggerVariantIds
+    : rule.triggerVariantId
+      ? [rule.triggerVariantId]
+      : [];
+
+  const triggerProductIds = Array.isArray(rule.triggerProductIds)
+    ? rule.triggerProductIds
+    : rule.triggerProductId
+      ? [rule.triggerProductId]
+      : [];
+
+  const skuMatch =
+    sku &&
+    triggerSkus.some((triggerSku) => normalize(triggerSku) === normalize(sku));
+
+  const variantMatch =
+    variantId &&
+    triggerVariantIds.some((id) => normalize(id) === normalize(variantId));
+
+  const productMatch =
+    productId &&
+    triggerProductIds.some((id) => normalize(id) === normalize(productId));
+
+  return Boolean(skuMatch || variantMatch || productMatch);
+}
+
+function lineMatchesAccessory(line, accessory) {
+  const sku = getVariantSku(line);
+  const variantId = getVariantId(line);
+  const productId = getProductId(line);
+
+  const skuMatch =
+    accessory.sku && sku && normalize(accessory.sku) === normalize(sku);
+
+  const variantMatch =
+    accessory.variantId &&
+    variantId &&
+    normalize(accessory.variantId) === normalize(variantId);
+
+  const productMatch =
+    accessory.productId &&
+    productId &&
+    normalize(accessory.productId) === normalize(productId);
+
+  return Boolean(skuMatch || variantMatch || productMatch);
+}
+
 /**
- * ===== OPEN BOX (UNCHANGED) =====
+ * ===== OPEN BOX =====
  */
+
 function buildOpenBoxCandidates(input) {
   const candidates = [];
 
@@ -89,8 +206,8 @@ function buildOpenBoxCandidates(input) {
         cartLine.id,
         null,
         discount,
-        `Open Box ${OPEN_BOX_DISCOUNT_PERCENT}% off`
-      )
+        `Open Box ${OPEN_BOX_DISCOUNT_PERCENT}% off`,
+      ),
     );
   }
 
@@ -100,6 +217,7 @@ function buildOpenBoxCandidates(input) {
 /**
  * ===== GET RULES FROM METAFIELD =====
  */
+
 function getBundleRules(input) {
   const config = input.discount?.metafield?.jsonValue;
 
@@ -113,20 +231,20 @@ function getBundleRules(input) {
 /**
  * ===== BUNDLE LOGIC =====
  */
+
 function buildBundleCandidates(input) {
   const candidates = [];
   const lines = input.cart.lines;
-
   const rules = getBundleRules(input);
 
   for (const rule of rules) {
     if (!rule.active) continue;
 
-    const triggerQty = getTotalQtyBySku(lines, rule.triggerSku);
+    const triggerQty = getTotalQtyByRule(lines, rule);
 
     if (!triggerQty || triggerQty <= 0) continue;
 
-    const maxDiscountable = triggerQty * (rule.ratio || 1);
+    const maxDiscountable = triggerQty * (Number(rule.ratio || 1) || 1);
 
     for (const accessory of rule.accessories || []) {
       let remaining = maxDiscountable;
@@ -134,22 +252,26 @@ function buildBundleCandidates(input) {
       for (const line of lines) {
         if (remaining <= 0) break;
 
-        const sku = getVariantSku(line);
-        if (sku !== accessory.sku) continue;
+        if (!lineMatchesAccessory(line, accessory)) continue;
 
         const lineQty = Number(line.quantity || 0);
         if (!lineQty || lineQty <= 0) continue;
 
         const qty = Math.min(lineQty, remaining);
 
-        candidates.push(
-          buildFixedAmountCandidate(
-            line.id,
-            qty,
-            accessory.discountAmount,
-            accessory.label || rule.message || "Bundle discount"
-          )
+        const message =
+          accessory.label ||
+          rule.message ||
+          "Bundle discount";
+
+        const candidate = buildDiscountCandidate(
+          line.id,
+          qty,
+          accessory,
+          message,
         );
+
+        candidates.push(candidate);
 
         remaining -= qty;
       }
@@ -162,6 +284,7 @@ function buildBundleCandidates(input) {
 /**
  * ===== MAIN =====
  */
+
 export function cartLinesDiscountsGenerateRun(input) {
   const operations = [];
 
