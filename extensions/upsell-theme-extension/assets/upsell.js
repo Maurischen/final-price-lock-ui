@@ -46,9 +46,81 @@ function isProductInCart(cart, product) {
   });
 }
 
-async function addUpsellToCart(variantId, button) {
-  const normalizedVariantId = normalizeVariantId(variantId);
-  if (!normalizedVariantId) return;
+function buildTriggerProduct(block) {
+  return {
+    title: block.dataset.productTitle || "Current product",
+    price: block.dataset.productPrice || "",
+    variantId: block.dataset.variantId || "",
+    sku: block.dataset.sku || "",
+    image: block.dataset.image || "",
+    imageAlt: block.dataset.productTitle || "Current product",
+    availableForSale: true,
+    isTrigger: true,
+  };
+}
+
+function renderBundleItem(product, message = "", inCart = false) {
+  const imageMarkup = product.image
+    ? `<img class="upsell-item__image" src="${product.image}" alt="${product.imageAlt || product.title}">`
+    : `<div class="upsell-item__image upsell-item__image--placeholder"></div>`;
+
+  const priceMarkup = product.price
+    ? `<div class="upsell-item__price">${moneyFormat(product.price)}</div>`
+    : "";
+
+  const badgeMarkup = product.isTrigger
+    ? inCart
+      ? `<div class="upsell-item__tag upsell-item__tag--muted">Main item already in cart</div>`
+      : `<div class="upsell-item__tag">Main item</div>`
+    : inCart
+      ? `<div class="upsell-item__tag upsell-item__tag--muted">Already in cart</div>`
+      : "";
+
+  const messageMarkup = message
+    ? `<div class="upsell-item__message">${message}</div>`
+    : "";
+
+  return `
+    <div class="upsell-item">
+      ${imageMarkup}
+      <div class="upsell-item__info">
+        <div class="upsell-item__name">${product.title}</div>
+        ${priceMarkup}
+        ${badgeMarkup}
+        ${messageMarkup}
+      </div>
+    </div>
+  `;
+}
+
+function calculateBundleTotal(items) {
+  return items.reduce((sum, item) => {
+    const price = Number(item?.price || 0);
+    return Number.isFinite(price) ? sum + price : sum;
+  }, 0);
+}
+
+function getBundleButtonLabel(remainingItems, triggerInCart) {
+  if (!remainingItems.length) {
+    return "Everything already in cart";
+  }
+
+  if (triggerInCart) {
+    return "Add remaining items";
+  }
+
+  return "Add bundle to cart";
+}
+
+async function addBundleToCart(items, button) {
+  const lines = items
+    .map((item) => ({
+      id: normalizeVariantId(item.variantId),
+      quantity: 1,
+    }))
+    .filter((item) => item.id);
+
+  if (!lines.length) return;
 
   const originalText = button.textContent;
   button.disabled = true;
@@ -61,16 +133,13 @@ async function addUpsellToCart(variantId, button) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        id: normalizedVariantId,
-        quantity: 1,
-      }),
+      body: JSON.stringify({ items: lines }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Cart add failed:", errorText);
-      throw new Error(`Cart add failed: ${response.status}`);
+      console.error("Bundle add failed:", errorText);
+      throw new Error(`Bundle add failed: ${response.status}`);
     }
 
     await response.json();
@@ -81,51 +150,10 @@ async function addUpsellToCart(variantId, button) {
 
     document.dispatchEvent(new CustomEvent("cart:refresh"));
   } catch (error) {
-    console.error("Upsell add-to-cart error:", error);
+    console.error("Upsell bundle add error:", error);
     button.disabled = false;
     button.textContent = originalText;
   }
-}
-
-function renderOffer(offer, product) {
-  if (!product) return "";
-
-  const imageMarkup = product.image
-    ? `<img class="upsell-item__image" src="${product.image}" alt="${product.imageAlt || product.title}">`
-    : `<div class="upsell-item__image upsell-item__image--placeholder"></div>`;
-
-  const priceMarkup = product.price
-    ? `<div class="upsell-item__price">${moneyFormat(product.price)}</div>`
-    : "";
-
-  const messageMarkup = offer?.message
-    ? `<div class="upsell-item__message">${offer.message}</div>`
-    : "";
-
-  const disabledAttr =
-    !product.availableForSale || !product.variantId ? "disabled" : "";
-
-  const buttonLabel =
-    !product.availableForSale || !product.variantId ? "Unavailable" : "Add";
-
-  return `
-    <div class="upsell-item">
-      ${imageMarkup}
-      <div class="upsell-item__info">
-        <div class="upsell-item__name">${product.title}</div>
-        ${priceMarkup}
-        ${messageMarkup}
-      </div>
-      <button
-        type="button"
-        class="upsell-item__button"
-        data-variant-id="${product.variantId || ""}"
-        ${disabledAttr}
-      >
-        ${buttonLabel}
-      </button>
-    </div>
-  `;
 }
 
 async function initUpsellBlocks(root = document) {
@@ -138,7 +166,8 @@ async function initUpsellBlocks(root = document) {
     if (!content) continue;
 
     if (!sku) {
-      content.innerHTML = `<div class="upsell-empty">No SKU found on this product.</div>`;
+      const wrapper = block.querySelector(".upsell-block__inner");
+      if (wrapper) wrapper.style.display = "none";
       continue;
     }
 
@@ -154,15 +183,15 @@ async function initUpsellBlocks(root = document) {
 
       if (!data || !data.rules || !data.rules.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
-        if (wrapper) {
-          wrapper.style.display = "none";
-        } else {
-          block.style.display = "none";
-        }
+        if (wrapper) wrapper.style.display = "none";
         continue;
       }
 
-      const renderedOffers = [];
+      const triggerProduct = buildTriggerProduct(block);
+      const triggerInCart = isProductInCart(cart, triggerProduct);
+
+      const allBundleItems = [triggerProduct];
+      const renderItems = [renderBundleItem(triggerProduct, "", triggerInCart)];
 
       for (const rule of data.rules) {
         const offers = Array.isArray(rule.offers) ? rule.offers : [];
@@ -170,37 +199,61 @@ async function initUpsellBlocks(root = document) {
         for (const offer of offers) {
           const product = offer?.product;
           if (!product) continue;
-          if (isProductInCart(cart, product)) continue;
 
-          renderedOffers.push(renderOffer(offer, product));
+          const offerInCart = isProductInCart(cart, product);
+
+          allBundleItems.push(product);
+          renderItems.push(
+            renderBundleItem(product, offer?.message || "", offerInCart),
+          );
         }
       }
 
-      if (!renderedOffers.length) {
+      const remainingItems = allBundleItems.filter(
+        (item) => !isProductInCart(cart, item),
+      );
+
+      if (allBundleItems.length <= 1) {
         const wrapper = block.querySelector(".upsell-block__inner");
-        if (wrapper) {
-          wrapper.style.display = "none";
-        } else {
-          block.style.display = "none";
-        }
+        if (wrapper) wrapper.style.display = "none";
         continue;
       }
 
-      content.innerHTML = renderedOffers.join("");
+      const bundleTotal = calculateBundleTotal(remainingItems);
+      const buttonLabel = getBundleButtonLabel(remainingItems, triggerInCart);
+      const buttonDisabled = remainingItems.length === 0 ? "disabled" : "";
 
-      content.querySelectorAll(".upsell-item__button").forEach((button) => {
-        button.addEventListener("click", () => {
-          addUpsellToCart(button.dataset.variantId, button);
+      content.innerHTML = `
+        <div class="upsell-bundle">
+          <div class="upsell-bundle__items">
+            ${renderItems.join("")}
+          </div>
+
+          <div class="upsell-bundle__footer">
+            <div class="upsell-bundle__total">
+              Total to add: <strong>${moneyFormat(bundleTotal)}</strong>
+            </div>
+            <button
+              type="button"
+              class="upsell-item__button upsell-bundle__button ${remainingItems.length === 0 ? "upsell-item__button--in-cart" : ""}"
+              ${buttonDisabled}
+            >
+              ${buttonLabel}
+            </button>
+          </div>
+        </div>
+      `;
+
+      const bundleButton = content.querySelector(".upsell-bundle__button");
+      if (bundleButton && remainingItems.length > 0) {
+        bundleButton.addEventListener("click", () => {
+          addBundleToCart(remainingItems, bundleButton);
         });
-      });
+      }
     } catch (error) {
       console.error("Upsell block error:", error);
       const wrapper = block.querySelector(".upsell-block__inner");
-      if (wrapper) {
-        wrapper.style.display = "none";
-      } else {
-        block.style.display = "none";
-      }
+      if (wrapper) wrapper.style.display = "none";
     }
   }
 }
