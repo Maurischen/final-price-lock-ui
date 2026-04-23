@@ -4,9 +4,6 @@ import {
   Layout,
   Card,
   Text,
-  TextField,
-  Select,
-  Checkbox,
   Button,
   InlineStack,
   BlockStack,
@@ -107,6 +104,36 @@ export async function action({ request }) {
   }
 }
 
+const inputStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #c9cccf",
+  borderRadius: "8px",
+  fontSize: "14px",
+  boxSizing: "border-box",
+};
+
+const labelStyle = {
+  display: "block",
+  fontSize: "13px",
+  fontWeight: 600,
+  marginBottom: "6px",
+};
+
+const fieldWrapStyle = {
+  minWidth: "220px",
+  flex: "1 1 220px",
+};
+
+function Field({ label, children }) {
+  return (
+    <div style={fieldWrapStyle}>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 function RuleCard({ rule }) {
   return (
     <Card>
@@ -116,6 +143,7 @@ function RuleCard({ rule }) {
             <Text as="h3" variant="headingMd">
               {rule.name}
             </Text>
+
             <InlineStack gap="200">
               <Badge>{rule.type}</Badge>
               <Badge tone="info">{rule.placement}</Badge>
@@ -157,41 +185,73 @@ function RuleCard({ rule }) {
           </Text>
 
           {rule.triggerProductId ? (
-            <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
+            <Text as="p" variant="bodySm">
+              Product ID: {rule.triggerProductId}
+            </Text>
           ) : null}
+
           {rule.triggerVariantId ? (
-            <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
+            <Text as="p" variant="bodySm">
+              Variant ID: {rule.triggerVariantId}
+            </Text>
           ) : null}
+
           {rule.triggerSku ? (
-            <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
+            <Text as="p" variant="bodySm">
+              SKU: {rule.triggerSku}
+            </Text>
           ) : null}
+
           {rule.triggerTag ? (
-            <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
+            <Text as="p" variant="bodySm">
+              Tag: {rule.triggerTag}
+            </Text>
           ) : null}
+
+          {(rule.minCartValue != null || rule.maxCartValue != null) && (
+            <Text as="p" variant="bodySm">
+              Cart value: {rule.minCartValue ?? "-"} to {rule.maxCartValue ?? "-"}
+            </Text>
+          )}
 
           <Text as="p" variant="bodyMd">
             <strong>Offer:</strong> {rule.offerMode}
           </Text>
 
           {rule.offerProductId ? (
-            <Text as="p" variant="bodySm">Offer Product ID: {rule.offerProductId}</Text>
+            <Text as="p" variant="bodySm">
+              Offer Product ID: {rule.offerProductId}
+            </Text>
           ) : null}
+
           {rule.offerVariantId ? (
-            <Text as="p" variant="bodySm">Offer Variant ID: {rule.offerVariantId}</Text>
+            <Text as="p" variant="bodySm">
+              Offer Variant ID: {rule.offerVariantId}
+            </Text>
           ) : null}
+
           {rule.offerSku ? (
-            <Text as="p" variant="bodySm">Offer SKU: {rule.offerSku}</Text>
+            <Text as="p" variant="bodySm">
+              Offer SKU: {rule.offerSku}
+            </Text>
           ) : null}
 
           {rule.discountMode !== "NONE" ? (
             <Text as="p" variant="bodySm">
               Discount: {rule.discountMode} {rule.discountValue ?? ""}
+              {rule.discountLabel ? ` (${rule.discountLabel})` : ""}
             </Text>
           ) : null}
 
           {rule.offerMessage ? (
-            <Text as="p" variant="bodySm">Message: {rule.offerMessage}</Text>
+            <Text as="p" variant="bodySm">
+              Message: {rule.offerMessage}
+            </Text>
           ) : null}
+
+          <Text as="p" variant="bodySm">
+            Priority: {rule.priority}
+          </Text>
         </BlockStack>
       </BlockStack>
     </Card>
@@ -242,230 +302,227 @@ export default function UpsellsPage() {
 
               <Form method="post">
                 <input type="hidden" name="intent" value="create" />
+                <input type="hidden" name="isActive" value="false" />
+                <input type="hidden" name="limitOnePerCart" value="false" />
+                <input type="hidden" name="hideIfOfferInCart" value="false" />
+                <input type="hidden" name="hideIfOfferOutOfStock" value="false" />
 
                 <BlockStack gap="400">
-                  <TextField
-                    label="Rule name"
-                    name="name"
-                    autoComplete="off"
-                  />
+                  <Field label="Rule name">
+                    <input
+                      type="text"
+                      name="name"
+                      style={inputStyle}
+                      placeholder="Laptop bag cross-sell"
+                    />
+                  </Field>
 
-                  <InlineStack gap="300" wrap>
-                    <div style={{ minWidth: 220 }}>
-                      <Select
-                        label="Type"
-                        name="type"
-                        options={[
-                          { label: "Cross-sell", value: "CROSS_SELL" },
-                          { label: "Upsell", value: "UPSELL" },
-                        ]}
-                      />
-                    </div>
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Type">
+                      <select name="type" defaultValue="CROSS_SELL" style={inputStyle}>
+                        <option value="CROSS_SELL">Cross-sell</option>
+                        <option value="UPSELL">Upsell</option>
+                      </select>
+                    </Field>
 
-                    <div style={{ minWidth: 220 }}>
-                      <Select
-                        label="Placement"
+                    <Field label="Placement">
+                      <select
                         name="placement"
-                        options={[
-                          { label: "Product page", value: "PRODUCT_PAGE" },
-                          { label: "Cart", value: "CART" },
-                          { label: "Cart drawer", value: "CART_DRAWER" },
-                          { label: "Post add", value: "POST_ADD" },
-                        ]}
-                      />
-                    </div>
+                        defaultValue="PRODUCT_PAGE"
+                        style={inputStyle}
+                      >
+                        <option value="PRODUCT_PAGE">Product page</option>
+                        <option value="CART">Cart</option>
+                        <option value="CART_DRAWER">Cart drawer</option>
+                        <option value="POST_ADD">Post add</option>
+                      </select>
+                    </Field>
 
-                    <div style={{ minWidth: 220 }}>
-                      <Select
-                        label="Trigger mode"
+                    <Field label="Trigger mode">
+                      <select
                         name="triggerMode"
-                        options={[
-                          { label: "SKU", value: "SKU" },
-                          { label: "Product", value: "PRODUCT" },
-                          { label: "Variant", value: "VARIANT" },
-                          { label: "Tag", value: "TAG" },
-                          { label: "Cart value", value: "CART_VALUE" },
-                        ]}
-                      />
-                    </div>
+                        defaultValue="SKU"
+                        style={inputStyle}
+                      >
+                        <option value="SKU">SKU</option>
+                        <option value="PRODUCT">Product</option>
+                        <option value="VARIANT">Variant</option>
+                        <option value="TAG">Tag</option>
+                        <option value="CART_VALUE">Cart value</option>
+                      </select>
+                    </Field>
 
-                    <div style={{ minWidth: 220 }}>
-                      <Select
-                        label="Offer mode"
+                    <Field label="Offer mode">
+                      <select
                         name="offerMode"
-                        options={[
-                          { label: "Product", value: "PRODUCT" },
-                          { label: "Variant", value: "VARIANT" },
-                          { label: "SKU", value: "SKU" },
-                        ]}
+                        defaultValue="PRODUCT"
+                        style={inputStyle}
+                      >
+                        <option value="PRODUCT">Product</option>
+                        <option value="VARIANT">Variant</option>
+                        <option value="SKU">SKU</option>
+                      </select>
+                    </Field>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Trigger product ID">
+                      <input type="text" name="triggerProductId" style={inputStyle} />
+                    </Field>
+
+                    <Field label="Trigger variant ID">
+                      <input type="text" name="triggerVariantId" style={inputStyle} />
+                    </Field>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Trigger SKU">
+                      <input type="text" name="triggerSku" style={inputStyle} />
+                    </Field>
+
+                    <Field label="Trigger tag">
+                      <input type="text" name="triggerTag" style={inputStyle} />
+                    </Field>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Min cart value">
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="minCartValue"
+                        style={inputStyle}
                       />
-                    </div>
-                  </InlineStack>
+                    </Field>
 
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Trigger product ID"
-                      name="triggerProductId"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Trigger variant ID"
-                      name="triggerVariantId"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
+                    <Field label="Max cart value">
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="maxCartValue"
+                        style={inputStyle}
+                      />
+                    </Field>
+                  </div>
 
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Trigger SKU"
-                      name="triggerSku"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Trigger tag"
-                      name="triggerTag"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Offer product ID">
+                      <input type="text" name="offerProductId" style={inputStyle} />
+                    </Field>
 
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Min cart value"
-                      name="minCartValue"
-                      type="number"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Max cart value"
-                      name="maxCartValue"
-                      type="number"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
+                    <Field label="Offer variant ID">
+                      <input type="text" name="offerVariantId" style={inputStyle} />
+                    </Field>
 
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Offer product ID"
-                      name="offerProductId"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Offer variant ID"
-                      name="offerVariantId"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Offer SKU"
-                      name="offerSku"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
+                    <Field label="Offer SKU">
+                      <input type="text" name="offerSku" style={inputStyle} />
+                    </Field>
+                  </div>
 
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Offer title override"
-                      name="offerTitleOverride"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Offer message"
-                      name="offerMessage"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Offer title override">
+                      <input
+                        type="text"
+                        name="offerTitleOverride"
+                        style={inputStyle}
+                      />
+                    </Field>
 
-                  <InlineStack gap="300" wrap>
-                    <div style={{ minWidth: 220 }}>
-                      <Select
-                        label="Discount mode"
+                    <Field label="Offer message">
+                      <input type="text" name="offerMessage" style={inputStyle} />
+                    </Field>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Discount mode">
+                      <select
                         name="discountMode"
-                        options={[
-                          { label: "None", value: "NONE" },
-                          { label: "Fixed", value: "FIXED" },
-                          { label: "Percentage", value: "PERCENTAGE" },
-                        ]}
+                        defaultValue="NONE"
+                        style={inputStyle}
+                      >
+                        <option value="NONE">None</option>
+                        <option value="FIXED">Fixed</option>
+                        <option value="PERCENTAGE">Percentage</option>
+                      </select>
+                    </Field>
+
+                    <Field label="Discount value">
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="discountValue"
+                        style={inputStyle}
                       />
-                    </div>
+                    </Field>
 
-                    <TextField
-                      label="Discount value"
-                      name="discountValue"
-                      type="number"
-                      autoComplete="off"
-                    />
+                    <Field label="Discount label">
+                      <input type="text" name="discountLabel" style={inputStyle} />
+                    </Field>
+                  </div>
 
-                    <TextField
-                      label="Discount label"
-                      name="discountLabel"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
-
-                  <InlineStack gap="300" wrap>
-                    <TextField
-                      label="Priority"
-                      name="priority"
-                      type="number"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Starts at"
-                      name="startsAt"
-                      type="datetime-local"
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Ends at"
-                      name="endsAt"
-                      type="datetime-local"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
-
-                  <InlineStack gap="500" wrap>
-                    <label>
-                      <input type="hidden" name="isActive" value="false" />
-                      <Checkbox
-                        label="Active"
-                        name="isActive"
-                        value="true"
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <Field label="Priority">
+                      <input
+                        type="number"
+                        name="priority"
+                        defaultValue="100"
+                        style={inputStyle}
                       />
+                    </Field>
+
+                    <Field label="Starts at">
+                      <input
+                        type="datetime-local"
+                        name="startsAt"
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    <Field label="Ends at">
+                      <input
+                        type="datetime-local"
+                        name="endsAt"
+                        style={inputStyle}
+                      />
+                    </Field>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <input type="checkbox" name="isActive" value="true" />
+                      <span>Active</span>
                     </label>
 
-                    <label>
-                      <input type="hidden" name="limitOnePerCart" value="false" />
-                      <Checkbox
-                        label="Limit one per cart"
+                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <input
+                        type="checkbox"
                         name="limitOnePerCart"
                         value="true"
                         defaultChecked
                       />
+                      <span>Limit one per cart</span>
                     </label>
 
-                    <label>
-                      <input type="hidden" name="hideIfOfferInCart" value="false" />
-                      <Checkbox
-                        label="Hide if offer already in cart"
+                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <input
+                        type="checkbox"
                         name="hideIfOfferInCart"
                         value="true"
                         defaultChecked
                       />
+                      <span>Hide if offer already in cart</span>
                     </label>
 
-                    <label>
+                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <input
-                        type="hidden"
-                        name="hideIfOfferOutOfStock"
-                        value="false"
-                      />
-                      <Checkbox
-                        label="Hide if offer is out of stock"
+                        type="checkbox"
                         name="hideIfOfferOutOfStock"
                         value="true"
                         defaultChecked
                       />
+                      <span>Hide if offer is out of stock</span>
                     </label>
-                  </InlineStack>
+                  </div>
 
                   <InlineStack align="end">
                     <Button submit variant="primary" loading={isSubmitting}>
