@@ -20,6 +20,7 @@ import { authenticate } from "../shopify.server";
 import {
   listUpsellRules,
   createUpsellRule,
+  updateUpsellRule,
   deleteUpsellRule,
   setUpsellRuleActive,
 } from "../services/upsell-rules.server";
@@ -94,6 +95,58 @@ function createInitialFormState() {
   };
 }
 
+function toDatetimeLocal(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function mapRuleToFormState(rule) {
+  return {
+    name: rule.name || "",
+    type: rule.type || "CROSS_SELL",
+    placement: rule.placement || "PRODUCT_PAGE",
+    triggerMode: rule.triggerMode || "SKU",
+    triggerProductId: rule.triggerProductId || "",
+    triggerVariantId: rule.triggerVariantId || "",
+    triggerSku: rule.triggerSku || "",
+    triggerTag: rule.triggerTag || "",
+    minCartValue: rule.minCartValue != null ? String(rule.minCartValue) : "",
+    maxCartValue: rule.maxCartValue != null ? String(rule.maxCartValue) : "",
+    priority: rule.priority != null ? String(rule.priority) : "100",
+    isActive: Boolean(rule.isActive),
+    limitOnePerCart: Boolean(rule.limitOnePerCart),
+    hideIfOfferInCart: Boolean(rule.hideIfOfferInCart),
+    hideIfOfferOutOfStock: Boolean(rule.hideIfOfferOutOfStock),
+    startsAt: toDatetimeLocal(rule.startsAt),
+    endsAt: toDatetimeLocal(rule.endsAt),
+    offers:
+      Array.isArray(rule.offerProducts) && rule.offerProducts.length > 0
+        ? rule.offerProducts.map((offer) => ({
+            offerMode: offer.offerMode || "SKU",
+            offerSku: offer.offerSku || "",
+            offerProductId: offer.offerProductId || "",
+            offerVariantId: offer.offerVariantId || "",
+            offerTitleOverride: offer.offerTitleOverride || "",
+            offerMessage: offer.offerMessage || "",
+            discountMode: offer.discountMode || "NONE",
+            discountValue:
+              offer.discountValue != null ? String(offer.discountValue) : "",
+            discountLabel: offer.discountLabel || "",
+            isActive: offer.isActive !== false,
+          }))
+        : [createEmptyOffer()],
+  };
+}
+
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const rules = await listUpsellRules(session.shop);
@@ -113,6 +166,16 @@ export async function action({ request }) {
     if (intent === "create") {
       const payload = JSON.parse(formData.get("payload") || "{}");
       const result = await createUpsellRule(session.shop, payload);
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
+    if (intent === "update") {
+      const id = formData.get("id");
+      const payload = JSON.parse(formData.get("payload") || "{}");
+      const result = await updateUpsellRule(id, session.shop, payload);
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -154,7 +217,7 @@ export async function action({ request }) {
   }
 }
 
-function RuleCard({ rule }) {
+function RuleCard({ rule, onEdit }) {
   const offers = Array.isArray(rule.offerProducts) ? rule.offerProducts : [];
 
   return (
@@ -176,6 +239,10 @@ function RuleCard({ rule }) {
           </BlockStack>
 
           <InlineStack gap="200">
+            <Button variant="secondary" onClick={() => onEdit(rule)}>
+              Edit
+            </Button>
+
             <Form method="post">
               <input type="hidden" name="intent" value="toggle-active" />
               <input type="hidden" name="id" value={rule.id} />
@@ -207,16 +274,24 @@ function RuleCard({ rule }) {
           </Text>
 
           {rule.triggerProductId ? (
-            <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
+            <Text as="p" variant="bodySm">
+              Product ID: {rule.triggerProductId}
+            </Text>
           ) : null}
           {rule.triggerVariantId ? (
-            <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
+            <Text as="p" variant="bodySm">
+              Variant ID: {rule.triggerVariantId}
+            </Text>
           ) : null}
           {rule.triggerSku ? (
-            <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
+            <Text as="p" variant="bodySm">
+              SKU: {rule.triggerSku}
+            </Text>
           ) : null}
           {rule.triggerTag ? (
-            <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
+            <Text as="p" variant="bodySm">
+              Tag: {rule.triggerTag}
+            </Text>
           ) : null}
           {(rule.minCartValue != null || rule.maxCartValue != null) && (
             <Text as="p" variant="bodySm">
@@ -240,17 +315,26 @@ function RuleCard({ rule }) {
                   <Text as="p" variant="bodySm">
                     <strong>Offer {index + 1}:</strong> {offer.offerMode}
                   </Text>
+
                   {offer.offerProductId ? (
-                    <Text as="p" variant="bodySm">Product ID: {offer.offerProductId}</Text>
+                    <Text as="p" variant="bodySm">
+                      Product ID: {offer.offerProductId}
+                    </Text>
                   ) : null}
                   {offer.offerVariantId ? (
-                    <Text as="p" variant="bodySm">Variant ID: {offer.offerVariantId}</Text>
+                    <Text as="p" variant="bodySm">
+                      Variant ID: {offer.offerVariantId}
+                    </Text>
                   ) : null}
                   {offer.offerSku ? (
-                    <Text as="p" variant="bodySm">SKU: {offer.offerSku}</Text>
+                    <Text as="p" variant="bodySm">
+                      SKU: {offer.offerSku}
+                    </Text>
                   ) : null}
                   {offer.offerMessage ? (
-                    <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
+                    <Text as="p" variant="bodySm">
+                      Message: {offer.offerMessage}
+                    </Text>
                   ) : null}
                   {offer.discountMode !== "NONE" ? (
                     <Text as="p" variant="bodySm">
@@ -281,9 +365,6 @@ function OfferTypeHelp() {
         <Text as="p" variant="bodyMd">
           <strong>Variant ID:</strong> Most precise. Use this when you need the exact variant added to cart with no ambiguity.
         </Text>
-        <Text as="p" variant="bodySm" tone="subdued">
-          Recommended approach: use SKU in the admin UI for convenience, then later resolve and store variant IDs in the backend for maximum reliability.
-        </Text>
       </BlockStack>
     </Banner>
   );
@@ -303,7 +384,7 @@ function TriggerTypeHelp() {
           <strong>Variant ID:</strong> Show the upsell only for one exact variant.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Tag:</strong> Show the upsell for any product with a matching tag, useful for broad category rules.
+          <strong>Tag:</strong> Show the upsell for any product with a matching tag.
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Cart value:</strong> Show the upsell only when the basket total falls within a value range.
@@ -320,6 +401,7 @@ export default function UpsellsPage() {
   const submit = useSubmit();
 
   const [formState, setFormState] = useState(createInitialFormState());
+  const [editingRuleId, setEditingRuleId] = useState(null);
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -329,7 +411,10 @@ export default function UpsellsPage() {
   }, [formState.offers.length]);
 
   function setField(field, value) {
-    setFormState((prev) => ({ ...prev, [field]: value }));
+    setFormState((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   }
 
   function updateOffer(index, field, value) {
@@ -357,10 +442,22 @@ export default function UpsellsPage() {
     });
   }
 
+  function handleEditRule(rule) {
+    setEditingRuleId(rule.id);
+    setFormState(mapRuleToFormState(rule));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleCancelEdit() {
+    setEditingRuleId(null);
+    setFormState(createInitialFormState());
+  }
+
   function handleSubmit() {
     submit(
       {
-        intent: "create",
+        intent: editingRuleId ? "update" : "create",
+        id: editingRuleId || "",
         payload: JSON.stringify({
           ...formState,
           offers: formState.offers || [],
@@ -375,7 +472,13 @@ export default function UpsellsPage() {
       title="Upsells & Cross-sells"
       subtitle={`Manage upsell rules for ${shop}`}
       primaryAction={{
-        content: isSubmitting ? "Saving..." : "Save rule",
+        content: isSubmitting
+          ? editingRuleId
+            ? "Updating..."
+            : "Saving..."
+          : editingRuleId
+            ? "Update rule"
+            : "Save rule",
         onAction: handleSubmit,
         loading: isSubmitting,
       }}
@@ -391,6 +494,17 @@ export default function UpsellsPage() {
                 <Text as="h2" variant="headingMd">
                   Rule details
                 </Text>
+
+                {editingRuleId ? (
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="p" variant="bodyMd">
+                      Editing existing rule
+                    </Text>
+                    <Button variant="plain" onClick={handleCancelEdit}>
+                      Cancel edit
+                    </Button>
+                  </InlineStack>
+                ) : null}
 
                 {actionData?.error ? (
                   <Text as="p" tone="critical">
@@ -410,7 +524,7 @@ export default function UpsellsPage() {
 
                 {actionData?.ok ? (
                   <Text as="p" tone="success">
-                    Rule saved successfully.
+                    Rule {editingRuleId ? "updated" : "saved"} successfully.
                   </Text>
                 ) : null}
 
@@ -726,7 +840,9 @@ export default function UpsellsPage() {
                 </Text>
               </Card>
             ) : (
-              rules.map((rule) => <RuleCard key={rule.id} rule={rule} />)
+              rules.map((rule) => (
+                <RuleCard key={rule.id} rule={rule} onEdit={handleEditRule} />
+              ))
             )}
           </BlockStack>
         </Layout.Section>

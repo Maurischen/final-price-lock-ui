@@ -153,7 +153,12 @@ async function initUpsellBlocks(root = document) {
       const data = await upsellRes.json();
 
       if (!data || !data.rules || !data.rules.length) {
-        content.innerHTML = `<div class="upsell-empty">No recommendations available.</div>`;
+        const wrapper = block.querySelector(".upsell-block__inner");
+        if (wrapper) {
+          wrapper.style.display = "none";
+        } else {
+          block.style.display = "none";
+        }
         continue;
       }
 
@@ -190,7 +195,12 @@ async function initUpsellBlocks(root = document) {
       });
     } catch (error) {
       console.error("Upsell block error:", error);
-      content.innerHTML = `<div class="upsell-error">Could not load recommendations.</div>`;
+      const wrapper = block.querySelector(".upsell-block__inner");
+      if (wrapper) {
+        wrapper.style.display = "none";
+      } else {
+        block.style.display = "none";
+      }
     }
   }
 }
