@@ -5,7 +5,7 @@
 .upsell-block__inner {
   border: 1px solid #e5e5e5;
   border-radius: 8px;
-  padding: 12px;
+  padding: 16px;
   background: #fff;
 }
 
@@ -14,24 +14,51 @@
   margin-bottom: 10px;
 }
 
+.upsell-block__debug,
+.upsell-loading,
+.upsell-empty,
+.upsell-error {
+  font-size: 13px;
+  color: #666;
+}
+
 .upsell-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
   gap: 12px;
-  padding-top: 10px;
-  margin-top: 10px;
+  align-items: center;
+  padding-top: 12px;
+  margin-top: 12px;
   border-top: 1px solid #f1f1f1;
+}
+
+.upsell-item__image {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f7f7f7;
+}
+
+.upsell-item__image--placeholder {
+  border: 1px solid #eee;
 }
 
 .upsell-item__name {
   font-weight: 500;
+  line-height: 1.3;
+}
+
+.upsell-item__price {
+  font-size: 13px;
+  color: #111;
+  margin-top: 4px;
 }
 
 .upsell-item__message {
   font-size: 12px;
   color: #666;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .upsell-item__button {
@@ -41,4 +68,10 @@
   border-radius: 6px;
   padding: 8px 12px;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.upsell-item__button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
