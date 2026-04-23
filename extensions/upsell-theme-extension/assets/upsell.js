@@ -2,15 +2,14 @@ function initUpsellBlocks(root = document) {
   const blocks = root.querySelectorAll(".upsell-block");
 
   blocks.forEach(async (block) => {
-    if (block.dataset.upsellInitialized === "true") return;
-    block.dataset.upsellInitialized = "true";
-
-    const sku = block.dataset.sku;
+    const sku = (block.dataset.sku || "").trim();
     const content = block.querySelector(".upsell-block__content");
 
-    if (!sku || !content) {
-      console.warn("Upsell block missing sku or content area", { sku, block });
-      content && (content.innerHTML = "<div>No SKU found for this product.</div>");
+    if (!content) return;
+
+    if (!sku) {
+      content.innerHTML = `<div class="upsell-empty">No SKU found on this product.</div>`;
+      console.warn("Upsell block: no SKU found", block);
       return;
     }
 
@@ -20,7 +19,7 @@ function initUpsellBlocks(root = document) {
       const res = await fetch(`/apps/upsell?sku=${encodeURIComponent(sku)}`);
       const data = await res.json();
 
-      console.log("Upsell block response:", data);
+      console.log("Upsell block response for SKU", sku, data);
 
       if (!data || !data.rules || !data.rules.length) {
         content.innerHTML = `<div class="upsell-empty">No matching upsell rule for SKU: ${sku}</div>`;
@@ -56,10 +55,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.addEventListener("shopify:section:load", (event) => {
   initUpsellBlocks(event.target);
-});
-
-document.addEventListener("shopify:section:reorder", () => {
-  initUpsellBlocks(document);
 });
 
 document.addEventListener("shopify:block:select", () => {
