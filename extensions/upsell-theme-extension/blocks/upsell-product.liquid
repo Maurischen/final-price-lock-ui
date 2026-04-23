@@ -1,0 +1,33 @@
+<div
+  id="upsell-block-{{ block.id }}"
+  class="upsell-block"
+  data-sku="{{ product.selected_or_first_available_variant.sku | escape }}"
+  {{ block.shopify_attributes }}
+>
+  <div class="upsell-block__inner">
+    <div class="upsell-block__title">
+      {{ block.settings.heading }}
+    </div>
+    <div class="upsell-block__content"></div>
+  </div>
+</div>
+
+{% schema %}
+{
+  "name": "Upsell block",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "stylesheet": "upsell.css",
+  "javascript": "upsell.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Complete your setup"
+    }
+  ]
+}
+{% endschema %}

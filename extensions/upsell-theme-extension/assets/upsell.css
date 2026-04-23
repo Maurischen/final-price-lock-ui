@@ -1,0 +1,44 @@
+.upsell-block {
+  margin-top: 16px;
+}
+
+.upsell-block__inner {
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.upsell-block__title {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.upsell-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid #f1f1f1;
+}
+
+.upsell-item__name {
+  font-weight: 500;
+}
+
+.upsell-item__message {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.upsell-item__button {
+  background: #ff3131;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
