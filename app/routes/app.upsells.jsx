@@ -23,6 +23,7 @@ import {
   updateUpsellRule,
   deleteUpsellRule,
   setUpsellRuleActive,
+  duplicateUpsellRule,
 } from "../services/upsell-rules.server";
 import { syncUpsellRulesToBundleDiscount } from "../services/upsell-discount-sync.server";
 
@@ -203,7 +204,7 @@ function SearchResults({ results, onSelect }) {
   );
 }
 
-function RuleCard({ rule, onEdit }) {
+function RuleCard({ rule, onEdit, isCollapsed, onToggleCollapse }) {
   const offers = Array.isArray(rule.offerProducts) ? rule.offerProducts : [];
 
   return (
@@ -221,13 +222,26 @@ function RuleCard({ rule, onEdit }) {
               <Badge tone={rule.isActive ? "success" : undefined}>
                 {rule.isActive ? "Active" : "Inactive"}
               </Badge>
+              <Badge>{offers.length} offers</Badge>
             </InlineStack>
           </BlockStack>
 
           <InlineStack gap="200">
+            <Button variant="secondary" onClick={() => onToggleCollapse(rule.id)}>
+              {isCollapsed ? "Expand" : "Collapse"}
+            </Button>
+
             <Button variant="secondary" onClick={() => onEdit(rule)}>
               Edit
             </Button>
+
+            <Form method="post">
+              <input type="hidden" name="intent" value="duplicate" />
+              <input type="hidden" name="id" value={rule.id} />
+              <Button submit variant="secondary">
+                Duplicate
+              </Button>
+            </Form>
 
             <Form method="post">
               <input type="hidden" name="intent" value="toggle-active" />
@@ -252,69 +266,79 @@ function RuleCard({ rule, onEdit }) {
           </InlineStack>
         </InlineStack>
 
-        <Divider />
+        {!isCollapsed ? (
+          <>
+            <Divider />
 
-        <BlockStack gap="200">
-          <Text as="p" variant="bodyMd">
-            <strong>Trigger:</strong> {rule.triggerMode}
-          </Text>
+            <BlockStack gap="200">
+              <Text as="p" variant="bodyMd">
+                <strong>Trigger:</strong> {rule.triggerMode}
+              </Text>
 
-          {rule.triggerProductId ? (
-            <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
-          ) : null}
-          {rule.triggerVariantId ? (
-            <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
-          ) : null}
-          {rule.triggerSku ? (
-            <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
-          ) : null}
-          {rule.triggerTag ? (
-            <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
-          ) : null}
-          {rule.triggerCollectionId ? (
-            <Text as="p" variant="bodySm">
-              Collection ID: {rule.triggerCollectionId}
-            </Text>
-          ) : null}
-          {(rule.minCartValue != null || rule.maxCartValue != null) && (
-            <Text as="p" variant="bodySm">
-              Cart value: {rule.minCartValue ?? "-"} to {rule.maxCartValue ?? "-"}
-            </Text>
-          )}
+              {rule.triggerProductId ? (
+                <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
+              ) : null}
+              {rule.triggerVariantId ? (
+                <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
+              ) : null}
+              {rule.triggerSku ? (
+                <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
+              ) : null}
+              {rule.triggerTag ? (
+                <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
+              ) : null}
+              {rule.triggerCollectionId ? (
+                <Text as="p" variant="bodySm">
+                  Collection ID: {rule.triggerCollectionId}
+                </Text>
+              ) : null}
+              {(rule.minCartValue != null || rule.maxCartValue != null) && (
+                <Text as="p" variant="bodySm">
+                  Cart value: {rule.minCartValue ?? "-"} to {rule.maxCartValue ?? "-"}
+                </Text>
+              )}
 
-          <Text as="p" variant="bodyMd">
-            <strong>Offers:</strong> {offers.length}
-          </Text>
+              <Text as="p" variant="bodyMd">
+                <strong>Offers:</strong> {offers.length}
+              </Text>
 
-          <BlockStack gap="100">
-            {offers.map((offer, index) => (
-              <Box
-                key={offer.id || index}
-                padding="200"
-                background="bg-surface-secondary"
-                borderRadius="200"
-              >
-                <BlockStack gap="100">
-                  <Text as="p" variant="bodySm">
-                    <strong>Offer {index + 1}:</strong> {offer.offerMode}
-                  </Text>
-                  {offer.offerProductId ? (
-                    <Text as="p" variant="bodySm">Product ID: {offer.offerProductId}</Text>
-                  ) : null}
-                  {offer.offerVariantId ? (
-                    <Text as="p" variant="bodySm">Variant ID: {offer.offerVariantId}</Text>
-                  ) : null}
-                  {offer.offerSku ? (
-                    <Text as="p" variant="bodySm">SKU: {offer.offerSku}</Text>
-                  ) : null}
-                  {offer.offerMessage ? (
-                    <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
-                  ) : null}
-                </BlockStack>
-              </Box>
-            ))}
-          </BlockStack>
-        </BlockStack>
+              <BlockStack gap="100">
+                {offers.map((offer, index) => (
+                  <Box
+                    key={offer.id || index}
+                    padding="200"
+                    background="bg-surface-secondary"
+                    borderRadius="200"
+                  >
+                    <BlockStack gap="100">
+                      <Text as="p" variant="bodySm">
+                        <strong>Offer {index + 1}:</strong> {offer.offerMode}
+                      </Text>
+                      {offer.offerProductId ? (
+                        <Text as="p" variant="bodySm">Product ID: {offer.offerProductId}</Text>
+                      ) : null}
+                      {offer.offerVariantId ? (
+                        <Text as="p" variant="bodySm">Variant ID: {offer.offerVariantId}</Text>
+                      ) : null}
+                      {offer.offerSku ? (
+                        <Text as="p" variant="bodySm">SKU: {offer.offerSku}</Text>
+                      ) : null}
+                      {offer.offerMessage ? (
+                        <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
+                      ) : null}
+                      {offer.discountMode !== "NONE" ? (
+                        <Text as="p" variant="bodySm">
+                          Discount: {offer.discountMode} {offer.discountValue ?? ""}
+                          {offer.discountLabel ? ` (${offer.discountLabel})` : ""}
+                        </Text>
+                      ) : null}
+                    </BlockStack>
+                  </Box>
+                ))}
+              </BlockStack>
+            </BlockStack>
+          </>
+        ) : null}
       </BlockStack>
     </Card>
   );
@@ -415,6 +439,17 @@ export async function action({ request }) {
       });
     }
 
+    if (intent === "duplicate") {
+      const id = formData.get("id");
+      const result = await syncIfOk(
+        await duplicateUpsellRule(id, session.shop),
+      );
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
     if (intent === "delete") {
       const id = formData.get("id");
       const result = await syncIfOk(
@@ -469,12 +504,66 @@ export default function UpsellsPage() {
   const [offerSearch, setOfferSearch] = useState({});
   const [offerResults, setOfferResults] = useState({});
 
+  const [ruleSearch, setRuleSearch] = useState("");
+  const [collapsedRuleIds, setCollapsedRuleIds] = useState(new Set());
+
   const isSubmitting = navigation.state === "submitting";
+
+  useEffect(() => {
+    if (actionData?.ok) {
+      setEditingRuleId(null);
+      setFormState(createInitialFormState());
+      setTriggerSearch("");
+      setTriggerResults([]);
+      setOfferSearch({});
+      setOfferResults({});
+    }
+  }, [actionData]);
 
   const offerCountLabel = useMemo(() => {
     const count = formState.offers.length;
     return count === 1 ? "1 offer product" : `${count} offer products`;
   }, [formState.offers.length]);
+
+  const filteredRules = useMemo(() => {
+    const query = ruleSearch.trim().toLowerCase();
+
+    if (!query) return rules;
+
+    return rules.filter((rule) => {
+      const offerText = (rule.offerProducts || [])
+        .map((offer) =>
+          [
+            offer.offerSku,
+            offer.offerProductId,
+            offer.offerVariantId,
+            offer.offerMessage,
+            offer.discountLabel,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        )
+        .join(" ");
+
+      const haystack = [
+        rule.name,
+        rule.type,
+        rule.placement,
+        rule.triggerMode,
+        rule.triggerSku,
+        rule.triggerTag,
+        rule.triggerProductId,
+        rule.triggerVariantId,
+        rule.triggerCollectionId,
+        offerText,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [rules, ruleSearch]);
 
   function setField(field, value) {
     setFormState((prev) => ({
@@ -541,6 +630,28 @@ export default function UpsellsPage() {
     );
   }
 
+  function toggleRuleCollapsed(ruleId) {
+    setCollapsedRuleIds((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(ruleId)) {
+        next.delete(ruleId);
+      } else {
+        next.add(ruleId);
+      }
+
+      return next;
+    });
+  }
+
+  function collapseAllRules() {
+    setCollapsedRuleIds(new Set(rules.map((rule) => rule.id)));
+  }
+
+  function expandAllRules() {
+    setCollapsedRuleIds(new Set());
+  }
+
   async function runTriggerSearch(query, mode) {
     if (!query || query.trim().length < 2) {
       setTriggerResults([]);
@@ -596,13 +707,15 @@ export default function UpsellsPage() {
   }, [triggerSearch, formState.triggerMode]);
 
   useEffect(() => {
-    formState.offers.forEach((offer, index) => {
+    const timers = formState.offers.map((offer, index) => {
       const query = offerSearch[index] || "";
-      const timeout = setTimeout(() => {
+
+      return setTimeout(() => {
         runOfferSearch(index, query, offer.offerMode);
       }, 250);
-      return () => clearTimeout(timeout);
     });
+
+    return () => timers.forEach(clearTimeout);
   }, [offerSearch, formState.offers]);
 
   function selectTriggerResult(result) {
@@ -728,7 +841,7 @@ export default function UpsellsPage() {
 
                 {actionData?.ok ? (
                   <Text as="p" tone="success">
-                    Rule {editingRuleId ? "updated" : "saved"} successfully.
+                    Rule saved successfully.
                   </Text>
                 ) : null}
 
@@ -1027,19 +1140,41 @@ export default function UpsellsPage() {
 
         <Layout.Section>
           <BlockStack gap="300">
-            <Text as="h2" variant="headingMd">
-              Existing rules
-            </Text>
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h2" variant="headingMd">
+                Existing rules
+              </Text>
 
-            {rules.length === 0 ? (
+              <InlineStack gap="200">
+                <Button onClick={collapseAllRules}>Collapse all</Button>
+                <Button onClick={expandAllRules}>Expand all</Button>
+              </InlineStack>
+            </InlineStack>
+
+            <TextField
+              label="Search bundles"
+              labelHidden
+              placeholder="Search by rule name, trigger SKU, offer SKU, tag, collection..."
+              value={ruleSearch}
+              onChange={setRuleSearch}
+              autoComplete="off"
+            />
+
+            {filteredRules.length === 0 ? (
               <Card>
                 <Text as="p" variant="bodyMd">
-                  No upsell rules yet.
+                  No matching upsell rules found.
                 </Text>
               </Card>
             ) : (
-              rules.map((rule) => (
-                <RuleCard key={rule.id} rule={rule} onEdit={handleEditRule} />
+              filteredRules.map((rule) => (
+                <RuleCard
+                  key={rule.id}
+                  rule={rule}
+                  onEdit={handleEditRule}
+                  isCollapsed={collapsedRuleIds.has(rule.id)}
+                  onToggleCollapse={toggleRuleCollapsed}
+                />
               ))
             )}
           </BlockStack>
