@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useActionData, useLoaderData, useNavigation, useSubmit, Form } from "react-router";
 import {
   Page,
@@ -70,6 +70,7 @@ function createEmptyOffer() {
     discountValue: "",
     discountLabel: "",
     isActive: true,
+    selectedLabel: "",
   };
 }
 
@@ -93,6 +94,7 @@ function createInitialFormState() {
     hideIfOfferOutOfStock: true,
     startsAt: "",
     endsAt: "",
+    triggerSelectedLabel: "",
     offers: [createEmptyOffer()],
   };
 }
@@ -131,6 +133,14 @@ function mapRuleToFormState(rule) {
     hideIfOfferOutOfStock: Boolean(rule.hideIfOfferOutOfStock),
     startsAt: toDatetimeLocal(rule.startsAt),
     endsAt: toDatetimeLocal(rule.endsAt),
+    triggerSelectedLabel:
+      rule.triggerMode === "PRODUCT"
+        ? rule.triggerProductId || ""
+        : rule.triggerMode === "VARIANT"
+          ? rule.triggerVariantId || ""
+          : rule.triggerMode === "COLLECTION"
+            ? rule.triggerCollectionId || ""
+            : rule.triggerSku || rule.triggerTag || "",
     offers:
       Array.isArray(rule.offerProducts) && rule.offerProducts.length > 0
         ? rule.offerProducts.map((offer) => ({
@@ -145,79 +155,51 @@ function mapRuleToFormState(rule) {
               offer.discountValue != null ? String(offer.discountValue) : "",
             discountLabel: offer.discountLabel || "",
             isActive: offer.isActive !== false,
+            selectedLabel:
+              offer.offerMode === "PRODUCT"
+                ? offer.offerProductId || ""
+                : offer.offerMode === "VARIANT"
+                  ? offer.offerVariantId || ""
+                  : offer.offerSku || "",
           }))
         : [createEmptyOffer()],
   };
 }
 
-export async function loader({ request }) {
-  const { session } = await authenticate.admin(request);
-  const rules = await listUpsellRules(session.shop);
+function SearchResults({ results, onSelect }) {
+  if (!results.length) return null;
 
-  return Response.json({
-    shop: session.shop,
-    rules,
-  });
-}
-
-export async function action({ request }) {
-  const { session } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  try {
-    if (intent === "create") {
-      const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await createUpsellRule(session.shop, payload);
-
-      return Response.json(result, {
-        status: result.ok ? 200 : 400,
-      });
-    }
-
-    if (intent === "update") {
-      const id = formData.get("id");
-      const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await updateUpsellRule(id, session.shop, payload);
-
-      return Response.json(result, {
-        status: result.ok ? 200 : 400,
-      });
-    }
-
-    if (intent === "delete") {
-      const id = formData.get("id");
-      const result = await deleteUpsellRule(id, session.shop);
-
-      return Response.json(result, {
-        status: result.ok ? 200 : 400,
-      });
-    }
-
-    if (intent === "toggle-active") {
-      const id = formData.get("id");
-      const isActive = formData.get("isActive") === "true";
-      const result = await setUpsellRuleActive(id, session.shop, isActive);
-
-      return Response.json(result, {
-        status: result.ok ? 200 : 400,
-      });
-    }
-
-    return Response.json(
-      { ok: false, error: "Unknown action." },
-      { status: 400 },
-    );
-  } catch (error) {
-    console.error("Upsell action error:", error);
-    return Response.json(
-      {
-        ok: false,
-        error: error?.message || "Something went wrong.",
-      },
-      { status: 500 },
-    );
-  }
+  return (
+    <Box
+      padding="200"
+      borderWidth="025"
+      borderColor="border"
+      borderRadius="200"
+      background="bg-surface-secondary"
+    >
+      <BlockStack gap="100">
+        {results.map((result) => (
+          <Button
+            key={result.id}
+            variant="plain"
+            textAlign="left"
+            onClick={() => onSelect(result)}
+          >
+            <BlockStack gap="050">
+              <Text as="span" variant="bodyMd">
+                {result.label}
+              </Text>
+              {result.secondary ? (
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {result.secondary}
+                </Text>
+              ) : null}
+            </BlockStack>
+          </Button>
+        ))}
+      </BlockStack>
+    </Box>
+  );
 }
 
 function RuleCard({ rule, onEdit }) {
@@ -327,12 +309,6 @@ function RuleCard({ rule, onEdit }) {
                   {offer.offerMessage ? (
                     <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
                   ) : null}
-                  {offer.discountMode !== "NONE" ? (
-                    <Text as="p" variant="bodySm">
-                      Discount: {offer.discountMode} {offer.discountValue ?? ""}
-                      {offer.discountLabel ? ` (${offer.discountLabel})` : ""}
-                    </Text>
-                  ) : null}
                 </BlockStack>
               </Box>
             ))}
@@ -348,13 +324,13 @@ function OfferTypeHelp() {
     <Banner title="How offer types work">
       <BlockStack gap="200">
         <Text as="p" variant="bodyMd">
-          <strong>SKU:</strong> Best when you already manage products by SKU. This is the easiest option for your current workflow and works well for supplier-fed catalogs.
+          <strong>SKU:</strong> Search variants by SKU and store the matched SKU and IDs.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Product ID:</strong> Targets a Shopify product. Use this when the offer should always point to the same product.
+          <strong>Product ID:</strong> Search and select a product.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Variant ID:</strong> Most precise. Use this when you need the exact variant added to cart with no ambiguity.
+          <strong>Variant ID:</strong> Search and select an exact variant.
         </Text>
       </BlockStack>
     </Banner>
@@ -366,19 +342,19 @@ function TriggerTypeHelp() {
     <Banner title="How trigger types work">
       <BlockStack gap="200">
         <Text as="p" variant="bodyMd">
-          <strong>SKU:</strong> Show the upsell when the viewed product or cart line matches a specific SKU.
+          <strong>SKU:</strong> Show the upsell when the viewed product matches a searched SKU.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Product ID:</strong> Show the upsell when a specific Shopify product is present.
+          <strong>Product ID:</strong> Show the upsell for one selected product.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Variant ID:</strong> Show the upsell only for one exact variant.
+          <strong>Variant ID:</strong> Show the upsell for one selected variant.
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Tag:</strong> Show the upsell for any product with a matching tag.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Collection ID:</strong> Show the upsell when the current product belongs to a specific collection.
+          <strong>Collection ID:</strong> Search and select a collection. The rule will apply to products inside that collection.
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Cart value:</strong> Show the upsell only when the basket total falls within a value range.
@@ -386,6 +362,76 @@ function TriggerTypeHelp() {
       </BlockStack>
     </Banner>
   );
+}
+
+export async function loader({ request }) {
+  const { session } = await authenticate.admin(request);
+  const rules = await listUpsellRules(session.shop);
+
+  return Response.json({
+    shop: session.shop,
+    rules,
+  });
+}
+
+export async function action({ request }) {
+  const { session } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  try {
+    if (intent === "create") {
+      const payload = JSON.parse(formData.get("payload") || "{}");
+      const result = await createUpsellRule(session.shop, payload);
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
+    if (intent === "update") {
+      const id = formData.get("id");
+      const payload = JSON.parse(formData.get("payload") || "{}");
+      const result = await updateUpsellRule(id, session.shop, payload);
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
+    if (intent === "delete") {
+      const id = formData.get("id");
+      const result = await deleteUpsellRule(id, session.shop);
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
+    if (intent === "toggle-active") {
+      const id = formData.get("id");
+      const isActive = formData.get("isActive") === "true";
+      const result = await setUpsellRuleActive(id, session.shop, isActive);
+
+      return Response.json(result, {
+        status: result.ok ? 200 : 400,
+      });
+    }
+
+    return Response.json(
+      { ok: false, error: "Unknown action." },
+      { status: 400 },
+    );
+  } catch (error) {
+    console.error("Upsell action error:", error);
+    return Response.json(
+      {
+        ok: false,
+        error: error?.message || "Something went wrong.",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export default function UpsellsPage() {
@@ -396,6 +442,12 @@ export default function UpsellsPage() {
 
   const [formState, setFormState] = useState(createInitialFormState());
   const [editingRuleId, setEditingRuleId] = useState(null);
+
+  const [triggerSearch, setTriggerSearch] = useState("");
+  const [triggerResults, setTriggerResults] = useState([]);
+
+  const [offerSearch, setOfferSearch] = useState({});
+  const [offerResults, setOfferResults] = useState({});
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -439,12 +491,20 @@ export default function UpsellsPage() {
   function handleEditRule(rule) {
     setEditingRuleId(rule.id);
     setFormState(mapRuleToFormState(rule));
+    setTriggerSearch("");
+    setTriggerResults([]);
+    setOfferSearch({});
+    setOfferResults({});
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handleCancelEdit() {
     setEditingRuleId(null);
     setFormState(createInitialFormState());
+    setTriggerSearch("");
+    setTriggerResults([]);
+    setOfferSearch({});
+    setOfferResults({});
   }
 
   function handleSubmit() {
@@ -459,6 +519,136 @@ export default function UpsellsPage() {
       },
       { method: "post" },
     );
+  }
+
+  async function runTriggerSearch(query, mode) {
+    if (!query || query.trim().length < 2) {
+      setTriggerResults([]);
+      return;
+    }
+
+    let type = "variant";
+    if (mode === "PRODUCT") type = "product";
+    if (mode === "VARIANT") type = "variant";
+    if (mode === "SKU") type = "variant";
+    if (mode === "COLLECTION") type = "collection";
+
+    const response = await fetch(
+      `/app/upsell-search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+    setTriggerResults(data?.results || []);
+  }
+
+  async function runOfferSearch(index, query, mode) {
+    if (!query || query.trim().length < 2) {
+      setOfferResults((prev) => ({ ...prev, [index]: [] }));
+      return;
+    }
+
+    let type = "variant";
+    if (mode === "PRODUCT") type = "product";
+    if (mode === "VARIANT") type = "variant";
+    if (mode === "SKU") type = "variant";
+
+    const response = await fetch(
+      `/app/upsell-search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+
+    setOfferResults((prev) => ({
+      ...prev,
+      [index]: data?.results || [],
+    }));
+  }
+
+  useEffect(() => {
+    if (formState.triggerMode === "TAG" || formState.triggerMode === "CART_VALUE") {
+      setTriggerResults([]);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      runTriggerSearch(triggerSearch, formState.triggerMode);
+    }, 250);
+
+    return () => clearTimeout(timeout);
+  }, [triggerSearch, formState.triggerMode]);
+
+  useEffect(() => {
+    formState.offers.forEach((offer, index) => {
+      const query = offerSearch[index] || "";
+      const timeout = setTimeout(() => {
+        runOfferSearch(index, query, offer.offerMode);
+      }, 250);
+      return () => clearTimeout(timeout);
+    });
+  }, [offerSearch, formState.offers]);
+
+  function selectTriggerResult(result) {
+    if (formState.triggerMode === "PRODUCT") {
+      setFormState((prev) => ({
+        ...prev,
+        triggerProductId: result.productId || "",
+        triggerVariantId: "",
+        triggerSku: "",
+        triggerTag: "",
+        triggerCollectionId: "",
+        triggerSelectedLabel: result.label,
+      }));
+    } else if (formState.triggerMode === "VARIANT") {
+      setFormState((prev) => ({
+        ...prev,
+        triggerProductId: result.productId || "",
+        triggerVariantId: result.variantId || "",
+        triggerSku: result.sku || "",
+        triggerTag: "",
+        triggerCollectionId: "",
+        triggerSelectedLabel: result.label,
+      }));
+    } else if (formState.triggerMode === "SKU") {
+      setFormState((prev) => ({
+        ...prev,
+        triggerProductId: result.productId || "",
+        triggerVariantId: result.variantId || "",
+        triggerSku: result.sku || "",
+        triggerTag: "",
+        triggerCollectionId: "",
+        triggerSelectedLabel: result.label,
+      }));
+    } else if (formState.triggerMode === "COLLECTION") {
+      setFormState((prev) => ({
+        ...prev,
+        triggerProductId: "",
+        triggerVariantId: "",
+        triggerSku: "",
+        triggerTag: "",
+        triggerCollectionId: result.collectionId || "",
+        triggerSelectedLabel: result.label,
+      }));
+    }
+
+    setTriggerResults([]);
+    setTriggerSearch("");
+  }
+
+  function selectOfferResult(index, result) {
+    const offerMode = formState.offers[index]?.offerMode;
+
+    if (offerMode === "PRODUCT") {
+      updateOffer(index, "offerProductId", result.productId || "");
+      updateOffer(index, "offerVariantId", "");
+      updateOffer(index, "offerSku", "");
+      updateOffer(index, "selectedLabel", result.label);
+    } else {
+      updateOffer(index, "offerProductId", result.productId || "");
+      updateOffer(index, "offerVariantId", result.variantId || "");
+      updateOffer(index, "offerSku", result.sku || "");
+      updateOffer(index, "selectedLabel", result.label);
+    }
+
+    setOfferResults((prev) => ({ ...prev, [index]: [] }));
+    setOfferSearch((prev) => ({ ...prev, [index]: "" }));
   }
 
   return (
@@ -590,61 +780,23 @@ export default function UpsellsPage() {
                   Trigger
                 </Text>
 
-                <InlineStack gap="300" wrap>
-                  <div style={{ minWidth: 220 }}>
-                    <Select
-                      label="Trigger mode"
-                      options={TRIGGER_MODE_OPTIONS}
-                      value={formState.triggerMode}
-                      onChange={(value) => setField("triggerMode", value)}
-                    />
-                  </div>
+                <div style={{ maxWidth: 260 }}>
+                  <Select
+                    label="Trigger mode"
+                    options={TRIGGER_MODE_OPTIONS}
+                    value={formState.triggerMode}
+                    onChange={(value) => setField("triggerMode", value)}
+                  />
+                </div>
 
-                  {formState.triggerMode === "SKU" ? (
-                    <TextField
-                      label="Trigger SKU"
-                      value={formState.triggerSku}
-                      onChange={(value) => setField("triggerSku", value)}
-                      autoComplete="off"
-                    />
-                  ) : null}
-
-                  {formState.triggerMode === "PRODUCT" ? (
-                    <TextField
-                      label="Trigger product ID"
-                      value={formState.triggerProductId}
-                      onChange={(value) => setField("triggerProductId", value)}
-                      autoComplete="off"
-                    />
-                  ) : null}
-
-                  {formState.triggerMode === "VARIANT" ? (
-                    <TextField
-                      label="Trigger variant ID"
-                      value={formState.triggerVariantId}
-                      onChange={(value) => setField("triggerVariantId", value)}
-                      autoComplete="off"
-                    />
-                  ) : null}
-
-                  {formState.triggerMode === "TAG" ? (
-                    <TextField
-                      label="Trigger tag"
-                      value={formState.triggerTag}
-                      onChange={(value) => setField("triggerTag", value)}
-                      autoComplete="off"
-                    />
-                  ) : null}
-
-                  {formState.triggerMode === "COLLECTION" ? (
-                    <TextField
-                      label="Trigger collection ID"
-                      value={formState.triggerCollectionId}
-                      onChange={(value) => setField("triggerCollectionId", value)}
-                      autoComplete="off"
-                    />
-                  ) : null}
-                </InlineStack>
+                {formState.triggerMode === "TAG" ? (
+                  <TextField
+                    label="Trigger tag"
+                    value={formState.triggerTag}
+                    onChange={(value) => setField("triggerTag", value)}
+                    autoComplete="off"
+                  />
+                ) : null}
 
                 {formState.triggerMode === "CART_VALUE" ? (
                   <InlineStack gap="300" wrap>
@@ -663,6 +815,36 @@ export default function UpsellsPage() {
                       autoComplete="off"
                     />
                   </InlineStack>
+                ) : null}
+
+                {!["TAG", "CART_VALUE"].includes(formState.triggerMode) ? (
+                  <BlockStack gap="200">
+                    <TextField
+                      label={
+                        formState.triggerMode === "COLLECTION"
+                          ? "Search collection"
+                          : formState.triggerMode === "PRODUCT"
+                            ? "Search product"
+                            : "Search SKU / variant"
+                      }
+                      value={triggerSearch}
+                      onChange={setTriggerSearch}
+                      autoComplete="off"
+                    />
+
+                    <SearchResults
+                      results={triggerResults}
+                      onSelect={selectTriggerResult}
+                    />
+
+                    {formState.triggerSelectedLabel ? (
+                      <Banner title="Selected trigger">
+                        <Text as="p" variant="bodyMd">
+                          {formState.triggerSelectedLabel}
+                        </Text>
+                      </Banner>
+                    ) : null}
+                  </BlockStack>
                 ) : null}
               </BlockStack>
             </Card>
@@ -705,47 +887,40 @@ export default function UpsellsPage() {
                         </Button>
                       </InlineStack>
 
-                      <InlineStack gap="300" wrap>
-                        <div style={{ minWidth: 220 }}>
-                          <Select
-                            label="Offer type"
-                            options={OFFER_MODE_OPTIONS}
-                            value={offer.offerMode}
-                            onChange={(value) => updateOffer(index, "offerMode", value)}
-                          />
-                        </div>
+                      <div style={{ maxWidth: 260 }}>
+                        <Select
+                          label="Offer type"
+                          options={OFFER_MODE_OPTIONS}
+                          value={offer.offerMode}
+                          onChange={(value) => updateOffer(index, "offerMode", value)}
+                        />
+                      </div>
 
-                        {offer.offerMode === "SKU" ? (
-                          <TextField
-                            label="Offer SKU"
-                            value={offer.offerSku}
-                            onChange={(value) => updateOffer(index, "offerSku", value)}
-                            autoComplete="off"
-                          />
-                        ) : null}
+                      <TextField
+                        label={
+                          offer.offerMode === "PRODUCT"
+                            ? "Search product"
+                            : "Search SKU / variant"
+                        }
+                        value={offerSearch[index] || ""}
+                        onChange={(value) =>
+                          setOfferSearch((prev) => ({ ...prev, [index]: value }))
+                        }
+                        autoComplete="off"
+                      />
 
-                        {offer.offerMode === "PRODUCT" ? (
-                          <TextField
-                            label="Offer product ID"
-                            value={offer.offerProductId}
-                            onChange={(value) =>
-                              updateOffer(index, "offerProductId", value)
-                            }
-                            autoComplete="off"
-                          />
-                        ) : null}
+                      <SearchResults
+                        results={offerResults[index] || []}
+                        onSelect={(result) => selectOfferResult(index, result)}
+                      />
 
-                        {offer.offerMode === "VARIANT" ? (
-                          <TextField
-                            label="Offer variant ID"
-                            value={offer.offerVariantId}
-                            onChange={(value) =>
-                              updateOffer(index, "offerVariantId", value)
-                            }
-                            autoComplete="off"
-                          />
-                        ) : null}
-                      </InlineStack>
+                      {offer.selectedLabel ? (
+                        <Banner title={`Selected offer ${index + 1}`}>
+                          <Text as="p" variant="bodyMd">
+                            {offer.selectedLabel}
+                          </Text>
+                        </Banner>
+                      ) : null}
 
                       <InlineStack gap="300" wrap>
                         <TextField

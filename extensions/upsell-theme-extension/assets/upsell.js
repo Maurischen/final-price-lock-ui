@@ -84,6 +84,28 @@ function getSavingsAmount(product, offer) {
   return Math.max(0, basePrice - discountedPrice);
 }
 
+function getCurrentPageQuantity() {
+  const selectors = [
+    'input[name="quantity"]',
+    'quantity-input input',
+    '.quantity__input',
+    'input.quantity__input',
+    'form[action*="/cart/add"] input[name="quantity"]'
+  ];
+
+  for (const selector of selectors) {
+    const input = document.querySelector(selector);
+    if (!input) continue;
+
+    const value = Number(input.value);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+  }
+
+  return 1;
+}
+
 function renderBundleItem({
   product,
   message = "",
@@ -163,11 +185,13 @@ function renderBundleItem({
   `;
 }
 
-function renderSummary(total, savings, itemCount) {
+function renderSummary(total, savings, itemCount, quantity) {
+  const qtyLabel = quantity > 1 ? ` × ${quantity}` : "";
+
   return `
     <div class="upsell-bundle__summary">
       <div class="upsell-bundle__summary-row">
-        <span>${itemCount} item${itemCount === 1 ? "" : "s"} selected</span>
+        <span>${itemCount} item${itemCount === 1 ? "" : "s"} selected${qtyLabel}</span>
         <strong>${moneyFormat(total)}</strong>
       </div>
       ${
@@ -184,9 +208,9 @@ function renderSummary(total, savings, itemCount) {
   `;
 }
 
-function getSelectedBundleState(triggerProduct, offersState) {
+function getSelectedBundleState(triggerProduct, offersState, quantity) {
   const selectedItems = [triggerProduct];
-  let total = Number(triggerProduct.price || 0) || 0;
+  let total = (Number(triggerProduct.price || 0) || 0) * quantity;
   let savings = 0;
 
   for (const offerState of offersState) {
@@ -196,8 +220,8 @@ function getSelectedBundleState(triggerProduct, offersState) {
     const itemSavings = getSavingsAmount(offerState.product, offerState.offer);
 
     selectedItems.push(offerState.product);
-    total += discountedPrice;
-    savings += itemSavings;
+    total += discountedPrice * quantity;
+    savings += itemSavings * quantity;
   }
 
   return {
@@ -208,27 +232,27 @@ function getSelectedBundleState(triggerProduct, offersState) {
   };
 }
 
-function getBundleButtonLabel(offersState, triggerInCart) {
-  const selectedOfferCount = offersState.filter(
-    (offerState) => offerState.selected && !offerState.inCart,
-  ).length;
-
-  if (triggerInCart && selectedOfferCount === 0) {
+function getBundleButtonLabel({ triggerInCart, selectedOfferCount, onlyTriggerSelected, nothingToAdd }) {
+  if (nothingToAdd) {
     return "Everything already in cart";
   }
 
-  if (triggerInCart) {
+  if (triggerInCart && selectedOfferCount > 0) {
     return "Add selected extras";
+  }
+
+  if (!triggerInCart && onlyTriggerSelected) {
+    return "Add product";
   }
 
   return "Add selected bundle";
 }
 
-async function addBundleToCart(items, button) {
+async function addBundleToCart(items, quantity, button) {
   const lines = items
     .map((item) => ({
       id: normalizeVariantId(item.variantId),
-      quantity: 1,
+      quantity,
     }))
     .filter((item) => item.id);
 
@@ -256,11 +280,15 @@ async function addBundleToCart(items, button) {
 
     await response.json();
 
-    button.textContent = "In Cart";
+    button.textContent = "Added";
     button.disabled = true;
     button.classList.add("upsell-item__button--in-cart");
 
     document.dispatchEvent(new CustomEvent("cart:refresh"));
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
   } catch (error) {
     console.error("Upsell bundle add error:", error);
     button.disabled = false;
@@ -278,30 +306,46 @@ function bindBundleInteractions({
   const button = content.querySelector(".upsell-bundle__button");
 
   function refreshSummary() {
+    const quantity = getCurrentPageQuantity();
+
     const { selectedItems, total, savings, itemCount } = getSelectedBundleState(
       triggerProduct,
       offersState,
+      quantity,
     );
 
     if (summaryEl) {
-      summaryEl.innerHTML = renderSummary(total, savings, itemCount);
+      summaryEl.innerHTML = renderSummary(total, savings, itemCount, quantity);
     }
 
     const remainingItems = triggerInCart
       ? selectedItems.filter((item) => !item.isTrigger)
       : selectedItems;
 
+    const selectedOfferCount = offersState.filter(
+      (offerState) => offerState.selected && !offerState.inCart,
+    ).length;
+
+    const onlyTriggerSelected = !triggerInCart && selectedOfferCount === 0;
     const nothingToAdd =
       (triggerInCart && remainingItems.length === 0) ||
       (!triggerInCart && selectedItems.length === 0);
 
     if (button) {
-      button.textContent = getBundleButtonLabel(offersState, triggerInCart);
+      button.textContent = getBundleButtonLabel({
+        triggerInCart,
+        selectedOfferCount,
+        onlyTriggerSelected,
+        nothingToAdd,
+      });
       button.disabled = nothingToAdd;
       button.classList.toggle("upsell-item__button--in-cart", nothingToAdd);
     }
 
-    return remainingItems;
+    return {
+      remainingItems,
+      quantity,
+    };
   }
 
   content.querySelectorAll(".upsell-bundle__checkbox").forEach((checkbox) => {
@@ -313,11 +357,26 @@ function bindBundleInteractions({
     });
   });
 
+  const quantitySelectors = [
+    'input[name="quantity"]',
+    'quantity-input input',
+    '.quantity__input',
+    'input.quantity__input',
+    'form[action*="/cart/add"] input[name="quantity"]'
+  ];
+
+  quantitySelectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((input) => {
+      input.addEventListener("change", refreshSummary);
+      input.addEventListener("input", refreshSummary);
+    });
+  });
+
   if (button) {
     button.addEventListener("click", () => {
-      const remainingItems = refreshSummary();
+      const { remainingItems, quantity } = refreshSummary();
       if (!remainingItems.length) return;
-      addBundleToCart(remainingItems, button);
+      addBundleToCart(remainingItems, quantity, button);
     });
   }
 
