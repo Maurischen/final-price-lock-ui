@@ -48,40 +48,99 @@ function isProductInCart(cart, product) {
 
 function buildTriggerProduct(block) {
   return {
-    title: block.dataset.productTitle || "Current product",
+    title: block.dataset.productTitle || "",
     price: block.dataset.productPrice || "",
     variantId: block.dataset.variantId || "",
     sku: block.dataset.sku || "",
     image: block.dataset.image || "",
-    imageAlt: block.dataset.productTitle || "Current product",
+    imageAlt: block.dataset.productTitle || "",
     availableForSale: true,
     isTrigger: true,
+    compareAtPrice: null,
   };
 }
 
-function renderBundleItem(product, message = "", inCart = false) {
+function getDiscountedPrice(product, offer) {
+  const basePrice = Number(product?.price || 0);
+  if (!Number.isFinite(basePrice)) return basePrice;
+
+  const discountMode = offer?.discount?.mode || "NONE";
+  const discountValue = Number(offer?.discount?.value || 0);
+
+  if (discountMode === "FIXED" && discountValue > 0) {
+    return Math.max(0, basePrice - discountValue);
+  }
+
+  if (discountMode === "PERCENTAGE" && discountValue > 0) {
+    return Math.max(0, basePrice - (basePrice * discountValue) / 100);
+  }
+
+  return basePrice;
+}
+
+function getSavingsAmount(product, offer) {
+  const basePrice = Number(product?.price || 0);
+  const discountedPrice = getDiscountedPrice(product, offer);
+  return Math.max(0, basePrice - discountedPrice);
+}
+
+function renderBundleItem({
+  product,
+  message = "",
+  inCart = false,
+  checked = false,
+  disabled = false,
+  offer = null,
+  index = 0,
+  selectable = false,
+}) {
   const imageMarkup = product.image
     ? `<img class="upsell-item__image" src="${product.image}" alt="${product.imageAlt || product.title}">`
     : `<div class="upsell-item__image upsell-item__image--placeholder"></div>`;
 
-  const priceMarkup = product.price
-    ? `<div class="upsell-item__price">${moneyFormat(product.price)}</div>`
-    : "";
+  const savings = offer ? getSavingsAmount(product, offer) : 0;
+  const discountedPrice = offer ? getDiscountedPrice(product, offer) : Number(product.price || 0);
+  const hasDiscount = savings > 0;
 
-  const badgeMarkup = product.isTrigger
-    ? inCart
-      ? `<div class="upsell-item__tag upsell-item__tag--muted">Main item already in cart</div>`
-      : `<div class="upsell-item__tag">Main item</div>`
-    : inCart
-      ? `<div class="upsell-item__tag upsell-item__tag--muted">Already in cart</div>`
+  const priceMarkup = hasDiscount
+    ? `
+      <div class="upsell-item__price-wrap">
+        <span class="upsell-item__price upsell-item__price--old">${moneyFormat(product.price)}</span>
+        <span class="upsell-item__price upsell-item__price--new">${moneyFormat(discountedPrice)}</span>
+      </div>
+    `
+    : product.price
+      ? `<div class="upsell-item__price">${moneyFormat(product.price)}</div>`
+      : "";
+
+  const badgeMarkup = inCart
+    ? `<div class="upsell-item__tag upsell-item__tag--muted">Already in cart</div>`
+    : hasDiscount
+      ? `<div class="upsell-item__tag upsell-item__tag--save">Save ${moneyFormat(savings)}</div>`
       : "";
 
   const messageMarkup = message
     ? `<div class="upsell-item__message">${message}</div>`
     : "";
 
+  const checkboxMarkup = selectable
+    ? `
+      <label class="upsell-item__check">
+        <input
+          type="checkbox"
+          class="upsell-bundle__checkbox"
+          data-index="${index}"
+          ${checked ? "checked" : ""}
+          ${disabled ? "disabled" : ""}
+        >
+        <span></span>
+      </label>
+    `
+    : "";
+
   return `
-    <div class="upsell-item">
+    <div class="upsell-item ${inCart ? "upsell-item--in-cart" : ""}">
+      ${checkboxMarkup}
       ${imageMarkup}
       <div class="upsell-item__info">
         <div class="upsell-item__name">${product.title}</div>
@@ -93,23 +152,65 @@ function renderBundleItem(product, message = "", inCart = false) {
   `;
 }
 
-function calculateBundleTotal(items) {
-  return items.reduce((sum, item) => {
-    const price = Number(item?.price || 0);
-    return Number.isFinite(price) ? sum + price : sum;
-  }, 0);
+function renderSummary(total, savings, itemCount) {
+  return `
+    <div class="upsell-bundle__summary">
+      <div class="upsell-bundle__summary-row">
+        <span>${itemCount} item${itemCount === 1 ? "" : "s"} selected</span>
+        <strong>${moneyFormat(total)}</strong>
+      </div>
+      ${
+        savings > 0
+          ? `
+            <div class="upsell-bundle__summary-row upsell-bundle__summary-row--save">
+              <span>You save</span>
+              <strong>${moneyFormat(savings)}</strong>
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
 }
 
-function getBundleButtonLabel(remainingItems, triggerInCart) {
-  if (!remainingItems.length) {
+function getSelectedBundleState(triggerProduct, offersState) {
+  const selectedItems = [triggerProduct];
+  let total = Number(triggerProduct.price || 0) || 0;
+  let savings = 0;
+
+  for (const offerState of offersState) {
+    if (!offerState.selected || offerState.inCart) continue;
+
+    const discountedPrice = getDiscountedPrice(offerState.product, offerState.offer);
+    const itemSavings = getSavingsAmount(offerState.product, offerState.offer);
+
+    selectedItems.push(offerState.product);
+    total += discountedPrice;
+    savings += itemSavings;
+  }
+
+  return {
+    selectedItems,
+    total,
+    savings,
+    itemCount: selectedItems.length,
+  };
+}
+
+function getBundleButtonLabel(offersState, triggerInCart) {
+  const selectedOfferCount = offersState.filter(
+    (offerState) => offerState.selected && !offerState.inCart,
+  ).length;
+
+  if (triggerInCart && selectedOfferCount === 0) {
     return "Everything already in cart";
   }
 
   if (triggerInCart) {
-    return "Add remaining items";
+    return "Add selected extras";
   }
 
-  return "Add bundle to cart";
+  return "Add selected bundle";
 }
 
 async function addBundleToCart(items, button) {
@@ -156,6 +257,62 @@ async function addBundleToCart(items, button) {
   }
 }
 
+function bindBundleInteractions({
+  content,
+  triggerProduct,
+  triggerInCart,
+  offersState,
+}) {
+  const summaryEl = content.querySelector(".upsell-bundle__summary-host");
+  const button = content.querySelector(".upsell-bundle__button");
+
+  function refreshSummary() {
+    const { selectedItems, total, savings, itemCount } = getSelectedBundleState(
+      triggerProduct,
+      offersState,
+    );
+
+    if (summaryEl) {
+      summaryEl.innerHTML = renderSummary(total, savings, itemCount);
+    }
+
+    const remainingItems = triggerInCart
+      ? selectedItems.filter((item) => !item.isTrigger)
+      : selectedItems;
+
+    const nothingToAdd =
+      (triggerInCart && remainingItems.length === 0) ||
+      (!triggerInCart && selectedItems.length === 0);
+
+    if (button) {
+      button.textContent = getBundleButtonLabel(offersState, triggerInCart);
+      button.disabled = nothingToAdd;
+      button.classList.toggle("upsell-item__button--in-cart", nothingToAdd);
+    }
+
+    return remainingItems;
+  }
+
+  content.querySelectorAll(".upsell-bundle__checkbox").forEach((checkbox) => {
+    checkbox.addEventListener("change", (event) => {
+      const index = Number(event.currentTarget.dataset.index);
+      if (!Number.isFinite(index) || !offersState[index]) return;
+      offersState[index].selected = event.currentTarget.checked;
+      refreshSummary();
+    });
+  });
+
+  if (button) {
+    button.addEventListener("click", () => {
+      const remainingItems = refreshSummary();
+      if (!remainingItems.length) return;
+      addBundleToCart(remainingItems, button);
+    });
+  }
+
+  refreshSummary();
+}
+
 async function initUpsellBlocks(root = document) {
   const blocks = root.querySelectorAll(".upsell-block");
 
@@ -190,8 +347,8 @@ async function initUpsellBlocks(root = document) {
       const triggerProduct = buildTriggerProduct(block);
       const triggerInCart = isProductInCart(cart, triggerProduct);
 
-      const allBundleItems = [triggerProduct];
-      const renderItems = [renderBundleItem(triggerProduct, "", triggerInCart)];
+      const offersState = [];
+      const renderedOfferItems = [];
 
       for (const rule of data.rules) {
         const offers = Array.isArray(rule.offers) ? rule.offers : [];
@@ -201,55 +358,81 @@ async function initUpsellBlocks(root = document) {
           if (!product) continue;
 
           const offerInCart = isProductInCart(cart, product);
+          const state = {
+            product,
+            offer,
+            inCart: offerInCart,
+            selected: !offerInCart,
+          };
 
-          allBundleItems.push(product);
-          renderItems.push(
-            renderBundleItem(product, offer?.message || "", offerInCart),
+          const stateIndex = offersState.push(state) - 1;
+
+          renderedOfferItems.push(
+            renderBundleItem({
+              product,
+              offer,
+              message: offer?.message || "",
+              inCart: offerInCart,
+              checked: state.selected,
+              disabled: offerInCart,
+              index: stateIndex,
+              selectable: true,
+            }),
           );
         }
       }
 
-      const remainingItems = allBundleItems.filter(
-        (item) => !isProductInCart(cart, item),
-      );
-
-      if (allBundleItems.length <= 1) {
+      if (!renderedOfferItems.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
         if (wrapper) wrapper.style.display = "none";
         continue;
       }
 
-      const bundleTotal = calculateBundleTotal(remainingItems);
-      const buttonLabel = getBundleButtonLabel(remainingItems, triggerInCart);
-      const buttonDisabled = remainingItems.length === 0 ? "disabled" : "";
-
       content.innerHTML = `
-        <div class="upsell-bundle">
-          <div class="upsell-bundle__items">
-            ${renderItems.join("")}
+        <div class="upsell-bundle upsell-bundle--premium">
+          <div class="upsell-bundle__hero">
+            <div>
+              <div class="upsell-bundle__eyebrow">Bundle & save</div>
+              <div class="upsell-bundle__headline">Complete your setup in one click</div>
+            </div>
+          </div>
+
+          <div class="upsell-bundle__section">
+            <div class="upsell-bundle__section-title">Your item</div>
+            ${renderBundleItem({
+              product: triggerProduct,
+              inCart: triggerInCart,
+              selectable: false,
+            })}
+          </div>
+
+          <div class="upsell-bundle__plus">+</div>
+
+          <div class="upsell-bundle__section">
+            <div class="upsell-bundle__section-title">Recommended add-ons</div>
+            <div class="upsell-bundle__items">
+              ${renderedOfferItems.join("")}
+            </div>
           </div>
 
           <div class="upsell-bundle__footer">
-            <div class="upsell-bundle__total">
-              Total to add: <strong>${moneyFormat(bundleTotal)}</strong>
-            </div>
+            <div class="upsell-bundle__summary-host"></div>
             <button
               type="button"
-              class="upsell-item__button upsell-bundle__button ${remainingItems.length === 0 ? "upsell-item__button--in-cart" : ""}"
-              ${buttonDisabled}
+              class="upsell-item__button upsell-bundle__button"
             >
-              ${buttonLabel}
+              Add selected bundle
             </button>
           </div>
         </div>
       `;
 
-      const bundleButton = content.querySelector(".upsell-bundle__button");
-      if (bundleButton && remainingItems.length > 0) {
-        bundleButton.addEventListener("click", () => {
-          addBundleToCart(remainingItems, bundleButton);
-        });
-      }
+      bindBundleInteractions({
+        content,
+        triggerProduct,
+        triggerInCart,
+        offersState,
+      });
     } catch (error) {
       console.error("Upsell block error:", error);
       const wrapper = block.querySelector(".upsell-block__inner");
