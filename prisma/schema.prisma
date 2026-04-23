@@ -110,7 +110,6 @@ model ProductAuditItem {
   @@index([shop])
   @@index([productGid])
 
-  // Optional but recommended:
   @@unique([runId, productGid])
 }
 
@@ -132,7 +131,6 @@ model ProductAuditScan {
   @@index([shop])
   @@index([productGid])
 
-  // Recommended:
   @@unique([runId, productGid])
 }
 
@@ -144,45 +142,39 @@ model UpsellRule {
   placement              UpsellPlacement
   triggerMode            UpsellTriggerMode
 
-  // single-trigger fields for MVP
   triggerProductId       String?
   triggerVariantId       String?
   triggerSku             String?
   triggerTag             String?
 
-  // cart-value conditions
   minCartValue           Float?
   maxCartValue           Float?
 
-  // offer fields
+  // legacy single-offer fields kept for backward compatibility
   offerMode              UpsellOfferMode
   offerProductId         String?
   offerVariantId         String?
   offerSku               String?
 
-  // display content
   offerTitleOverride     String?
   offerMessage           String?
   discountMode           UpsellDiscountMode @default(NONE)
   discountValue          Float?
   discountLabel          String?
 
-  // behavior
   priority               Int      @default(100)
   isActive               Boolean  @default(true)
   limitOnePerCart        Boolean  @default(true)
   hideIfOfferInCart      Boolean  @default(true)
   hideIfOfferOutOfStock  Boolean  @default(true)
 
-  // scheduler
   startsAt               DateTime?
   endsAt                 DateTime?
 
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  targets                UpsellRuleTarget[]
-  analytics              UpsellEvent[]
+  offerProducts          UpsellOfferProduct[]
 
   @@index([shop])
   @@index([shop, isActive])
@@ -193,36 +185,31 @@ model UpsellRule {
   @@index([shop, triggerTag])
 }
 
-model UpsellRuleTarget {
-  id          String   @id @default(cuid())
-  ruleId      String
-  targetType  UpsellTargetType
-  targetValue String
-  createdAt   DateTime @default(now())
+model UpsellOfferProduct {
+  id                 String   @id @default(cuid())
+  ruleId             String
+  position           Int      @default(0)
 
-  rule UpsellRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  offerMode          UpsellOfferMode
+  offerProductId     String?
+  offerVariantId     String?
+  offerSku           String?
+
+  offerTitleOverride String?
+  offerMessage       String?
+
+  discountMode       UpsellDiscountMode @default(NONE)
+  discountValue      Float?
+  discountLabel      String?
+
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  rule               UpsellRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@index([ruleId])
-  @@index([targetType, targetValue])
-}
-
-model UpsellEvent {
-  id         String   @id @default(cuid())
-  shop       String
-  ruleId     String
-  eventType  UpsellEventType
-  sessionId  String?
-  cartToken  String?
-  productId  String?
-  variantId  String?
-  createdAt  DateTime @default(now())
-
-  rule UpsellRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-
-  @@index([shop])
-  @@index([ruleId])
-  @@index([eventType])
-  @@index([createdAt])
+  @@index([ruleId, position])
 }
 
 enum UpsellRuleType {
@@ -255,18 +242,4 @@ enum UpsellDiscountMode {
   NONE
   FIXED
   PERCENTAGE
-}
-
-enum UpsellTargetType {
-  PRODUCT_ID
-  VARIANT_ID
-  SKU
-  TAG
-}
-
-enum UpsellEventType {
-  VIEWED
-  CLICKED
-  ADDED
-  DISMISSED
 }

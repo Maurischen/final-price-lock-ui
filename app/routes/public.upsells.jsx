@@ -9,7 +9,10 @@ export async function loader({ request }) {
     const sku = url.searchParams.get("sku");
 
     if (!sku) {
-      return Response.json({ ok: false, error: "Missing SKU" }, { status: 400 });
+      return Response.json(
+        { ok: false, error: "Missing SKU" },
+        { status: 400 },
+      );
     }
 
     const result = await resolveUpsells({
@@ -18,11 +21,30 @@ export async function loader({ request }) {
       context: { sku },
     });
 
-    const offerSkus = result.rules
-      .map((rule) => rule.offer?.sku)
-      .filter(Boolean);
+    // Support both new multi-offer rules and old single-offer rules
+    const offerEntries = [];
 
-    let products = [];
+    for (const rule of result.rules || []) {
+      if (Array.isArray(rule.offers) && rule.offers.length > 0) {
+        for (const offer of rule.offers) {
+          if (offer?.sku) {
+            offerEntries.push({
+              ruleId: rule.id,
+              sku: offer.sku,
+            });
+          }
+        }
+      } else if (rule.offer?.sku) {
+        offerEntries.push({
+          ruleId: rule.id,
+          sku: rule.offer.sku,
+        });
+      }
+    }
+
+    const offerSkus = [...new Set(offerEntries.map((entry) => entry.sku).filter(Boolean))];
+
+    let productsBySku = {};
 
     if (offerSkus.length > 0) {
       const searchQuery = offerSkus.map((s) => `sku:${s}`).join(" OR ");
@@ -30,7 +52,7 @@ export async function loader({ request }) {
       const response = await admin.graphql(
         `#graphql
         query UpsellProducts($query: String!) {
-          products(first: 10, query: $query) {
+          products(first: 20, query: $query) {
             nodes {
               id
               title
@@ -39,7 +61,7 @@ export async function loader({ request }) {
                 url
                 altText
               }
-              variants(first: 10) {
+              variants(first: 20) {
                 nodes {
                   id
                   sku
@@ -59,45 +81,45 @@ export async function loader({ request }) {
       const json = await response.json();
       const nodes = json?.data?.products?.nodes || [];
 
-      products = nodes
-        .map((product) => {
-          const matchingVariant =
-            product.variants?.nodes?.find((variant) =>
-              offerSkus.includes(variant.sku),
-            ) || product.variants?.nodes?.[0];
+      for (const product of nodes) {
+        for (const variant of product.variants?.nodes || []) {
+          if (!variant?.sku) continue;
 
-          return {
+          productsBySku[variant.sku] = {
             id: product.id,
             title: product.title,
             handle: product.handle,
             image: product.featuredImage?.url || null,
             imageAlt: product.featuredImage?.altText || product.title,
-            variantId: matchingVariant?.id || null,
-            variantTitle: matchingVariant?.title || null,
-            sku: matchingVariant?.sku || null,
-            price: matchingVariant?.price || null,
-            availableForSale: matchingVariant?.availableForSale ?? false,
+            variantId: variant.id,
+            variantTitle: variant.title,
+            sku: variant.sku,
+            price: variant.price,
+            availableForSale: variant.availableForSale ?? false,
           };
-        })
-        .filter((p) => p.sku);
+        }
+      }
     }
 
-    const rules = result.rules.map((rule) => {
-      const matchedProduct = products.find(
-        (product) => product.sku === rule.offer?.sku,
-      );
+    const rules = (result.rules || []).map((rule) => {
+      // New multi-offer shape
+      if (Array.isArray(rule.offers) && rule.offers.length > 0) {
+        return {
+          ...rule,
+          offers: rule.offers.map((offer) => ({
+            ...offer,
+            product: offer?.sku ? productsBySku[offer.sku] || null : null,
+          })),
+        };
+      }
 
+      // Legacy single-offer shape
       return {
-        id: rule.id,
-        name: rule.name,
-        type: rule.type,
-        placement: rule.placement,
-        priority: rule.priority,
+        ...rule,
         offer: {
           ...rule.offer,
-          product: matchedProduct || null,
+          product: rule.offer?.sku ? productsBySku[rule.offer.sku] || null : null,
         },
-        discount: rule.discount,
       };
     });
 
