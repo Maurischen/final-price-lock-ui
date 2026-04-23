@@ -18,19 +18,71 @@ function normalizeString(value) {
 }
 
 /**
- * Checks whether a cart already contains the offer.
+ * Convert a rule into a normalized offers[] array.
+ * Supports:
+ * - new child-table offerProducts[]
+ * - legacy single-offer fields
  */
-function cartAlreadyHasOffer(cart, rule) {
+function getRuleOffers(rule) {
+  if (Array.isArray(rule?.offerProducts) && rule.offerProducts.length > 0) {
+    return rule.offerProducts
+      .filter((offer) => offer?.isActive !== false)
+      .sort((a, b) => (a.position || 0) - (b.position || 0))
+      .map((offer) => ({
+        id: offer.id,
+        mode: offer.offerMode,
+        productId: offer.offerProductId,
+        variantId: offer.offerVariantId,
+        sku: offer.offerSku,
+        titleOverride: offer.offerTitleOverride,
+        message: offer.offerMessage,
+        discount: {
+          mode: offer.discountMode,
+          value: offer.discountValue,
+          label: offer.discountLabel,
+        },
+        rawOffer: offer,
+      }));
+  }
+
+  // legacy single-offer fallback
+  if (rule?.offerProductId || rule?.offerVariantId || rule?.offerSku) {
+    return [
+      {
+        id: null,
+        mode: rule.offerMode,
+        productId: rule.offerProductId,
+        variantId: rule.offerVariantId,
+        sku: rule.offerSku,
+        titleOverride: rule.offerTitleOverride,
+        message: rule.offerMessage,
+        discount: {
+          mode: rule.discountMode,
+          value: rule.discountValue,
+          label: rule.discountLabel,
+        },
+        rawOffer: null,
+      },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * Checks whether cart already contains a specific offer.
+ */
+function cartAlreadyHasOffer(cart, offer) {
   const lines = Array.isArray(cart?.lines) ? cart.lines : [];
 
   return lines.some((line) => {
     const merch = line?.merchandise || {};
 
     return (
-      (rule.offerProductId && merch.productId === rule.offerProductId) ||
-      (rule.offerVariantId && merch.id === rule.offerVariantId) ||
-      (rule.offerSku &&
-        normalizeString(merch.sku) === normalizeString(rule.offerSku))
+      (offer.productId && merch.productId === offer.productId) ||
+      (offer.variantId && merch.id === offer.variantId) ||
+      (offer.sku &&
+        normalizeString(merch.sku) === normalizeString(offer.sku))
     );
   });
 }
@@ -102,69 +154,8 @@ function matchesCartContext(rule, context) {
 }
 
 /**
- * Very basic offer payload formatter.
- * Later this can be enriched with Shopify product lookups.
- */
-function formatResolvedRule(rule) {
-  return {
-    id: rule.id,
-    name: rule.name,
-    type: rule.type,
-    placement: rule.placement,
-    priority: rule.priority,
-    offer: {
-      mode: rule.offerMode,
-      productId: rule.offerProductId,
-      variantId: rule.offerVariantId,
-      sku: rule.offerSku,
-      titleOverride: rule.offerTitleOverride,
-      message: rule.offerMessage,
-    },
-    discount: {
-      mode: rule.discountMode,
-      value: rule.discountValue,
-      label: rule.discountLabel,
-    },
-    rawRule: rule,
-  };
-}
-
-/**
  * Main resolver for storefront/admin preview use.
- *
- * Usage examples:
- *
- * resolveUpsells({
- *   shop,
- *   placement: "PRODUCT_PAGE",
- *   context: {
- *     productId,
- *     variantId,
- *     sku,
- *     tags,
- *     cart,
- *   },
- * })
- *
- * resolveUpsells({
- *   shop,
- *   placement: "CART",
- *   context: {
- *     cart: {
- *       subtotalAmount: 999,
- *       lines: [
- *         {
- *           merchandise: {
- *             id: "...",
- *             productId: "...",
- *             sku: "...",
- *             productTags: ["monitor"]
- *           }
- *         }
- *       ]
- *     }
- *   }
- * })
+ * Supports multiple offers per rule.
  */
 export async function resolveUpsells({ shop, placement, context = {} }) {
   if (!shop || !placement) {
@@ -181,34 +172,55 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
       placement,
       isActive: true,
     },
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
     orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
   });
 
-  const matchedRules = rules.filter((rule) => {
-    if (!isRuleLive(rule)) return false;
+  const matchedRules = rules
+    .filter((rule) => {
+      if (!isRuleLive(rule)) return false;
 
-    const isMatch =
-      placement === "PRODUCT_PAGE"
-        ? matchesProductContext(rule, context)
-        : matchesCartContext(rule, context);
+      const isMatch =
+        placement === "PRODUCT_PAGE"
+          ? matchesProductContext(rule, context)
+          : matchesCartContext(rule, context);
 
-    if (!isMatch) return false;
+      return isMatch;
+    })
+    .map((rule) => {
+      const offers = getRuleOffers(rule).filter((offer) => {
+        if (rule.hideIfOfferInCart && context?.cart) {
+          if (cartAlreadyHasOffer(context.cart, offer)) {
+            return false;
+          }
+        }
 
-    if (rule.hideIfOfferInCart && context?.cart) {
-      if (cartAlreadyHasOffer(context.cart, rule)) {
-        return false;
-      }
-    }
+        return true;
+      });
 
-    return true;
-  });
-
-  const resolved = matchedRules.map(formatResolvedRule);
+      return {
+        id: rule.id,
+        name: rule.name,
+        type: rule.type,
+        placement: rule.placement,
+        priority: rule.priority,
+        offers,
+        // legacy single-offer compatibility for old frontend code
+        offer: offers[0] || null,
+        rawRule: rule,
+      };
+    })
+    .filter((rule) => rule.offers.length > 0);
 
   return {
     ok: true,
-    count: resolved.length,
-    rules: resolved,
+    count: matchedRules.length,
+    rules: matchedRules,
   };
 }
 

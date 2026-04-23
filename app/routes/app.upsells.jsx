@@ -1,14 +1,20 @@
-import { useLoaderData, useActionData, Form, useNavigation } from "react-router";
+import { useMemo, useState } from "react";
+import { useActionData, useLoaderData, useNavigation, useSubmit, Form } from "react-router";
 import {
   Page,
   Layout,
   Card,
   Text,
+  TextField,
+  Select,
+  Checkbox,
   Button,
   InlineStack,
   BlockStack,
   Badge,
   Divider,
+  Banner,
+  Box,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import {
@@ -17,6 +23,76 @@ import {
   deleteUpsellRule,
   setUpsellRuleActive,
 } from "../services/upsell-rules.server";
+
+const TYPE_OPTIONS = [
+  { label: "Cross-sell", value: "CROSS_SELL" },
+  { label: "Upsell", value: "UPSELL" },
+];
+
+const PLACEMENT_OPTIONS = [
+  { label: "Product page", value: "PRODUCT_PAGE" },
+  { label: "Cart", value: "CART" },
+  { label: "Cart drawer", value: "CART_DRAWER" },
+  { label: "Post add", value: "POST_ADD" },
+];
+
+const TRIGGER_MODE_OPTIONS = [
+  { label: "SKU", value: "SKU" },
+  { label: "Product ID", value: "PRODUCT" },
+  { label: "Variant ID", value: "VARIANT" },
+  { label: "Tag", value: "TAG" },
+  { label: "Cart value", value: "CART_VALUE" },
+];
+
+const OFFER_MODE_OPTIONS = [
+  { label: "SKU", value: "SKU" },
+  { label: "Product ID", value: "PRODUCT" },
+  { label: "Variant ID", value: "VARIANT" },
+];
+
+const DISCOUNT_MODE_OPTIONS = [
+  { label: "None", value: "NONE" },
+  { label: "Fixed amount", value: "FIXED" },
+  { label: "Percentage", value: "PERCENTAGE" },
+];
+
+function createEmptyOffer() {
+  return {
+    offerMode: "SKU",
+    offerSku: "",
+    offerProductId: "",
+    offerVariantId: "",
+    offerTitleOverride: "",
+    offerMessage: "",
+    discountMode: "NONE",
+    discountValue: "",
+    discountLabel: "",
+    isActive: true,
+  };
+}
+
+function createInitialFormState() {
+  return {
+    name: "",
+    type: "CROSS_SELL",
+    placement: "PRODUCT_PAGE",
+    triggerMode: "SKU",
+    triggerProductId: "",
+    triggerVariantId: "",
+    triggerSku: "",
+    triggerTag: "",
+    minCartValue: "",
+    maxCartValue: "",
+    priority: "100",
+    isActive: true,
+    limitOnePerCart: true,
+    hideIfOfferInCart: true,
+    hideIfOfferOutOfStock: true,
+    startsAt: "",
+    endsAt: "",
+    offers: [createEmptyOffer()],
+  };
+}
 
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
@@ -35,34 +111,8 @@ export async function action({ request }) {
 
   try {
     if (intent === "create") {
-      const result = await createUpsellRule(session.shop, {
-        name: formData.get("name"),
-        type: formData.get("type"),
-        placement: formData.get("placement"),
-        triggerMode: formData.get("triggerMode"),
-        triggerProductId: formData.get("triggerProductId"),
-        triggerVariantId: formData.get("triggerVariantId"),
-        triggerSku: formData.get("triggerSku"),
-        triggerTag: formData.get("triggerTag"),
-        minCartValue: formData.get("minCartValue"),
-        maxCartValue: formData.get("maxCartValue"),
-        offerMode: formData.get("offerMode"),
-        offerProductId: formData.get("offerProductId"),
-        offerVariantId: formData.get("offerVariantId"),
-        offerSku: formData.get("offerSku"),
-        offerTitleOverride: formData.get("offerTitleOverride"),
-        offerMessage: formData.get("offerMessage"),
-        discountMode: formData.get("discountMode"),
-        discountValue: formData.get("discountValue"),
-        discountLabel: formData.get("discountLabel"),
-        priority: formData.get("priority"),
-        isActive: formData.get("isActive"),
-        limitOnePerCart: formData.get("limitOnePerCart"),
-        hideIfOfferInCart: formData.get("hideIfOfferInCart"),
-        hideIfOfferOutOfStock: formData.get("hideIfOfferOutOfStock"),
-        startsAt: formData.get("startsAt"),
-        endsAt: formData.get("endsAt"),
-      });
+      const payload = JSON.parse(formData.get("payload") || "{}");
+      const result = await createUpsellRule(session.shop, payload);
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -104,37 +154,25 @@ export async function action({ request }) {
   }
 }
 
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  border: "1px solid #c9cccf",
-  borderRadius: "8px",
-  fontSize: "14px",
-  boxSizing: "border-box",
-};
-
-const labelStyle = {
-  display: "block",
-  fontSize: "13px",
-  fontWeight: 600,
-  marginBottom: "6px",
-};
-
-const fieldWrapStyle = {
-  minWidth: "220px",
-  flex: "1 1 220px",
-};
-
-function Field({ label, children }) {
-  return (
-    <div style={fieldWrapStyle}>
-      <label style={labelStyle}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
 function RuleCard({ rule }) {
+  const offers =
+    Array.isArray(rule.offerProducts) && rule.offerProducts.length > 0
+      ? rule.offerProducts
+      : rule.offerSku || rule.offerProductId || rule.offerVariantId
+        ? [
+            {
+              offerMode: rule.offerMode,
+              offerSku: rule.offerSku,
+              offerProductId: rule.offerProductId,
+              offerVariantId: rule.offerVariantId,
+              offerMessage: rule.offerMessage,
+              discountMode: rule.discountMode,
+              discountValue: rule.discountValue,
+              discountLabel: rule.discountLabel,
+            },
+          ]
+        : [];
+
   return (
     <Card>
       <BlockStack gap="300">
@@ -189,25 +227,21 @@ function RuleCard({ rule }) {
               Product ID: {rule.triggerProductId}
             </Text>
           ) : null}
-
           {rule.triggerVariantId ? (
             <Text as="p" variant="bodySm">
               Variant ID: {rule.triggerVariantId}
             </Text>
           ) : null}
-
           {rule.triggerSku ? (
             <Text as="p" variant="bodySm">
               SKU: {rule.triggerSku}
             </Text>
           ) : null}
-
           {rule.triggerTag ? (
             <Text as="p" variant="bodySm">
               Tag: {rule.triggerTag}
             </Text>
           ) : null}
-
           {(rule.minCartValue != null || rule.maxCartValue != null) && (
             <Text as="p" variant="bodySm">
               Cart value: {rule.minCartValue ?? "-"} to {rule.maxCartValue ?? "-"}
@@ -215,46 +249,100 @@ function RuleCard({ rule }) {
           )}
 
           <Text as="p" variant="bodyMd">
-            <strong>Offer:</strong> {rule.offerMode}
+            <strong>Offers:</strong> {offers.length}
           </Text>
 
-          {rule.offerProductId ? (
-            <Text as="p" variant="bodySm">
-              Offer Product ID: {rule.offerProductId}
-            </Text>
-          ) : null}
+          <BlockStack gap="100">
+            {offers.map((offer, index) => (
+              <Box
+                key={offer.id || index}
+                padding="200"
+                background="bg-surface-secondary"
+                borderRadius="200"
+              >
+                <BlockStack gap="100">
+                  <Text as="p" variant="bodySm">
+                    <strong>Offer {index + 1}:</strong> {offer.offerMode}
+                  </Text>
 
-          {rule.offerVariantId ? (
-            <Text as="p" variant="bodySm">
-              Offer Variant ID: {rule.offerVariantId}
-            </Text>
-          ) : null}
-
-          {rule.offerSku ? (
-            <Text as="p" variant="bodySm">
-              Offer SKU: {rule.offerSku}
-            </Text>
-          ) : null}
-
-          {rule.discountMode !== "NONE" ? (
-            <Text as="p" variant="bodySm">
-              Discount: {rule.discountMode} {rule.discountValue ?? ""}
-              {rule.discountLabel ? ` (${rule.discountLabel})` : ""}
-            </Text>
-          ) : null}
-
-          {rule.offerMessage ? (
-            <Text as="p" variant="bodySm">
-              Message: {rule.offerMessage}
-            </Text>
-          ) : null}
-
-          <Text as="p" variant="bodySm">
-            Priority: {rule.priority}
-          </Text>
+                  {offer.offerProductId ? (
+                    <Text as="p" variant="bodySm">
+                      Product ID: {offer.offerProductId}
+                    </Text>
+                  ) : null}
+                  {offer.offerVariantId ? (
+                    <Text as="p" variant="bodySm">
+                      Variant ID: {offer.offerVariantId}
+                    </Text>
+                  ) : null}
+                  {offer.offerSku ? (
+                    <Text as="p" variant="bodySm">
+                      SKU: {offer.offerSku}
+                    </Text>
+                  ) : null}
+                  {offer.offerMessage ? (
+                    <Text as="p" variant="bodySm">
+                      Message: {offer.offerMessage}
+                    </Text>
+                  ) : null}
+                  {offer.discountMode !== "NONE" ? (
+                    <Text as="p" variant="bodySm">
+                      Discount: {offer.discountMode} {offer.discountValue ?? ""}
+                      {offer.discountLabel ? ` (${offer.discountLabel})` : ""}
+                    </Text>
+                  ) : null}
+                </BlockStack>
+              </Box>
+            ))}
+          </BlockStack>
         </BlockStack>
       </BlockStack>
     </Card>
+  );
+}
+
+function OfferTypeHelp() {
+  return (
+    <Banner title="How offer types work">
+      <BlockStack gap="200">
+        <Text as="p" variant="bodyMd">
+          <strong>SKU:</strong> Best when you already manage products by SKU. This is the easiest option for your current workflow and works well for supplier-fed catalogs.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Product ID:</strong> Targets a Shopify product. Use this when the offer should always point to the same product, regardless of which variant is selected later.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Variant ID:</strong> Most precise. Use this when you need the exact variant added to cart with no ambiguity.
+        </Text>
+        <Text as="p" variant="bodySm" tone="subdued">
+          Recommended approach: use SKU in the admin UI for convenience, then later resolve and store variant IDs in the backend for maximum reliability.
+        </Text>
+      </BlockStack>
+    </Banner>
+  );
+}
+
+function TriggerTypeHelp() {
+  return (
+    <Banner title="How trigger types work">
+      <BlockStack gap="200">
+        <Text as="p" variant="bodyMd">
+          <strong>SKU:</strong> Show the upsell when the viewed product or cart line matches a specific SKU.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Product ID:</strong> Show the upsell when a specific Shopify product is present.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Variant ID:</strong> Show the upsell only for one exact variant.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Tag:</strong> Show the upsell for any product with a matching tag, useful for broad category rules.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Cart value:</strong> Show the upsell only when the basket total falls within a value range.
+        </Text>
+      </BlockStack>
+    </Banner>
   );
 }
 
@@ -262,277 +350,400 @@ export default function UpsellsPage() {
   const { shop, rules } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const submit = useSubmit();
+
+  const [formState, setFormState] = useState(createInitialFormState());
 
   const isSubmitting = navigation.state === "submitting";
+
+  const offerCountLabel = useMemo(() => {
+    const count = formState.offers.length;
+    return count === 1 ? "1 offer product" : `${count} offer products`;
+  }, [formState.offers.length]);
+
+  function setField(field, value) {
+    setFormState((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function updateOffer(index, field, value) {
+    setFormState((prev) => {
+      const offers = [...prev.offers];
+      offers[index] = { ...offers[index], [field]: value };
+      return { ...prev, offers };
+    });
+  }
+
+  function addOffer() {
+    setFormState((prev) => ({
+      ...prev,
+      offers: [...prev.offers, createEmptyOffer()],
+    }));
+  }
+
+  function removeOffer(index) {
+    setFormState((prev) => {
+      const offers = prev.offers.filter((_, i) => i !== index);
+      return {
+        ...prev,
+        offers: offers.length ? offers : [createEmptyOffer()],
+      };
+    });
+  }
+
+  function handleSubmit() {
+    submit(
+      {
+        intent: "create",
+        payload: JSON.stringify(formState),
+      },
+      { method: "post" },
+    );
+  }
 
   return (
     <Page
       title="Upsells & Cross-sells"
       subtitle={`Manage upsell rules for ${shop}`}
+      primaryAction={{
+        content: isSubmitting ? "Saving..." : "Save rule",
+        onAction: handleSubmit,
+        loading: isSubmitting,
+      }}
     >
       <Layout>
         <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Create rule
-              </Text>
+          <BlockStack gap="400">
+            <OfferTypeHelp />
+            <TriggerTypeHelp />
 
-              {actionData?.error ? (
-                <Text as="p" tone="critical">
-                  {actionData.error}
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Rule details
                 </Text>
-              ) : null}
 
-              {actionData?.errors ? (
-                <BlockStack gap="100">
-                  {Object.entries(actionData.errors).map(([key, value]) => (
-                    <Text key={key} as="p" tone="critical">
-                      {value}
-                    </Text>
-                  ))}
-                </BlockStack>
-              ) : null}
+                {actionData?.error ? (
+                  <Text as="p" tone="critical">
+                    {actionData.error}
+                  </Text>
+                ) : null}
 
-              {actionData?.ok ? (
-                <Text as="p" tone="success">
-                  Rule saved successfully.
-                </Text>
-              ) : null}
+                {actionData?.errors ? (
+                  <BlockStack gap="100">
+                    {Object.entries(actionData.errors).map(([key, value]) => (
+                      <Text key={key} as="p" tone="critical">
+                        {value}
+                      </Text>
+                    ))}
+                  </BlockStack>
+                ) : null}
 
-              <Form method="post">
-                <input type="hidden" name="intent" value="create" />
-                <input type="hidden" name="isActive" value="false" />
-                <input type="hidden" name="limitOnePerCart" value="false" />
-                <input type="hidden" name="hideIfOfferInCart" value="false" />
-                <input type="hidden" name="hideIfOfferOutOfStock" value="false" />
+                {actionData?.ok ? (
+                  <Text as="p" tone="success">
+                    Rule saved successfully.
+                  </Text>
+                ) : null}
 
-                <BlockStack gap="400">
-                  <Field label="Rule name">
-                    <input
-                      type="text"
-                      name="name"
-                      style={inputStyle}
-                      placeholder="Laptop bag cross-sell"
+                <TextField
+                  label="Rule name"
+                  value={formState.name}
+                  onChange={(value) => setField("name", value)}
+                  autoComplete="off"
+                />
+
+                <InlineStack gap="300" wrap>
+                  <div style={{ minWidth: 220 }}>
+                    <Select
+                      label="Type"
+                      options={TYPE_OPTIONS}
+                      value={formState.type}
+                      onChange={(value) => setField("type", value)}
                     />
-                  </Field>
-
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Type">
-                      <select name="type" defaultValue="CROSS_SELL" style={inputStyle}>
-                        <option value="CROSS_SELL">Cross-sell</option>
-                        <option value="UPSELL">Upsell</option>
-                      </select>
-                    </Field>
-
-                    <Field label="Placement">
-                      <select
-                        name="placement"
-                        defaultValue="PRODUCT_PAGE"
-                        style={inputStyle}
-                      >
-                        <option value="PRODUCT_PAGE">Product page</option>
-                        <option value="CART">Cart</option>
-                        <option value="CART_DRAWER">Cart drawer</option>
-                        <option value="POST_ADD">Post add</option>
-                      </select>
-                    </Field>
-
-                    <Field label="Trigger mode">
-                      <select
-                        name="triggerMode"
-                        defaultValue="SKU"
-                        style={inputStyle}
-                      >
-                        <option value="SKU">SKU</option>
-                        <option value="PRODUCT">Product</option>
-                        <option value="VARIANT">Variant</option>
-                        <option value="TAG">Tag</option>
-                        <option value="CART_VALUE">Cart value</option>
-                      </select>
-                    </Field>
-
-                    <Field label="Offer mode">
-                      <select
-                        name="offerMode"
-                        defaultValue="PRODUCT"
-                        style={inputStyle}
-                      >
-                        <option value="PRODUCT">Product</option>
-                        <option value="VARIANT">Variant</option>
-                        <option value="SKU">SKU</option>
-                      </select>
-                    </Field>
                   </div>
 
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Trigger product ID">
-                      <input type="text" name="triggerProductId" style={inputStyle} />
-                    </Field>
-
-                    <Field label="Trigger variant ID">
-                      <input type="text" name="triggerVariantId" style={inputStyle} />
-                    </Field>
+                  <div style={{ minWidth: 220 }}>
+                    <Select
+                      label="Placement"
+                      options={PLACEMENT_OPTIONS}
+                      value={formState.placement}
+                      onChange={(value) => setField("placement", value)}
+                    />
                   </div>
 
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Trigger SKU">
-                      <input type="text" name="triggerSku" style={inputStyle} />
-                    </Field>
+                  <div style={{ minWidth: 220 }}>
+                    <TextField
+                      label="Priority"
+                      type="number"
+                      value={formState.priority}
+                      onChange={(value) => setField("priority", value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                </InlineStack>
 
-                    <Field label="Trigger tag">
-                      <input type="text" name="triggerTag" style={inputStyle} />
-                    </Field>
+                <InlineStack gap="500" wrap>
+                  <Checkbox
+                    label="Active"
+                    checked={formState.isActive}
+                    onChange={(value) => setField("isActive", value)}
+                  />
+                  <Checkbox
+                    label="Limit one per cart"
+                    checked={formState.limitOnePerCart}
+                    onChange={(value) => setField("limitOnePerCart", value)}
+                  />
+                  <Checkbox
+                    label="Hide if offer already in cart"
+                    checked={formState.hideIfOfferInCart}
+                    onChange={(value) => setField("hideIfOfferInCart", value)}
+                  />
+                  <Checkbox
+                    label="Hide if offer is out of stock"
+                    checked={formState.hideIfOfferOutOfStock}
+                    onChange={(value) => setField("hideIfOfferOutOfStock", value)}
+                  />
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Trigger
+                </Text>
+
+                <InlineStack gap="300" wrap>
+                  <div style={{ minWidth: 220 }}>
+                    <Select
+                      label="Trigger mode"
+                      options={TRIGGER_MODE_OPTIONS}
+                      value={formState.triggerMode}
+                      onChange={(value) => setField("triggerMode", value)}
+                    />
                   </div>
 
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Min cart value">
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="minCartValue"
-                        style={inputStyle}
-                      />
-                    </Field>
+                  {(formState.triggerMode === "SKU") && (
+                    <TextField
+                      label="Trigger SKU"
+                      value={formState.triggerSku}
+                      onChange={(value) => setField("triggerSku", value)}
+                      autoComplete="off"
+                    />
+                  )}
 
-                    <Field label="Max cart value">
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="maxCartValue"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </div>
+                  {(formState.triggerMode === "PRODUCT") && (
+                    <TextField
+                      label="Trigger product ID"
+                      value={formState.triggerProductId}
+                      onChange={(value) => setField("triggerProductId", value)}
+                      autoComplete="off"
+                    />
+                  )}
 
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Offer product ID">
-                      <input type="text" name="offerProductId" style={inputStyle} />
-                    </Field>
+                  {(formState.triggerMode === "VARIANT") && (
+                    <TextField
+                      label="Trigger variant ID"
+                      value={formState.triggerVariantId}
+                      onChange={(value) => setField("triggerVariantId", value)}
+                      autoComplete="off"
+                    />
+                  )}
 
-                    <Field label="Offer variant ID">
-                      <input type="text" name="offerVariantId" style={inputStyle} />
-                    </Field>
+                  {(formState.triggerMode === "TAG") && (
+                    <TextField
+                      label="Trigger tag"
+                      value={formState.triggerTag}
+                      onChange={(value) => setField("triggerTag", value)}
+                      autoComplete="off"
+                    />
+                  )}
+                </InlineStack>
 
-                    <Field label="Offer SKU">
-                      <input type="text" name="offerSku" style={inputStyle} />
-                    </Field>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Offer title override">
-                      <input
-                        type="text"
-                        name="offerTitleOverride"
-                        style={inputStyle}
-                      />
-                    </Field>
-
-                    <Field label="Offer message">
-                      <input type="text" name="offerMessage" style={inputStyle} />
-                    </Field>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Discount mode">
-                      <select
-                        name="discountMode"
-                        defaultValue="NONE"
-                        style={inputStyle}
-                      >
-                        <option value="NONE">None</option>
-                        <option value="FIXED">Fixed</option>
-                        <option value="PERCENTAGE">Percentage</option>
-                      </select>
-                    </Field>
-
-                    <Field label="Discount value">
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="discountValue"
-                        style={inputStyle}
-                      />
-                    </Field>
-
-                    <Field label="Discount label">
-                      <input type="text" name="discountLabel" style={inputStyle} />
-                    </Field>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                    <Field label="Priority">
-                      <input
-                        type="number"
-                        name="priority"
-                        defaultValue="100"
-                        style={inputStyle}
-                      />
-                    </Field>
-
-                    <Field label="Starts at">
-                      <input
-                        type="datetime-local"
-                        name="startsAt"
-                        style={inputStyle}
-                      />
-                    </Field>
-
-                    <Field label="Ends at">
-                      <input
-                        type="datetime-local"
-                        name="endsAt"
-                        style={inputStyle}
-                      />
-                    </Field>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
-                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input type="checkbox" name="isActive" value="true" />
-                      <span>Active</span>
-                    </label>
-
-                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        name="limitOnePerCart"
-                        value="true"
-                        defaultChecked
-                      />
-                      <span>Limit one per cart</span>
-                    </label>
-
-                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        name="hideIfOfferInCart"
-                        value="true"
-                        defaultChecked
-                      />
-                      <span>Hide if offer already in cart</span>
-                    </label>
-
-                    <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input
-                        type="checkbox"
-                        name="hideIfOfferOutOfStock"
-                        value="true"
-                        defaultChecked
-                      />
-                      <span>Hide if offer is out of stock</span>
-                    </label>
-                  </div>
-
-                  <InlineStack align="end">
-                    <Button submit variant="primary" loading={isSubmitting}>
-                      Save rule
-                    </Button>
+                {formState.triggerMode === "CART_VALUE" ? (
+                  <InlineStack gap="300" wrap>
+                    <TextField
+                      label="Min cart value"
+                      type="number"
+                      value={formState.minCartValue}
+                      onChange={(value) => setField("minCartValue", value)}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="Max cart value"
+                      type="number"
+                      value={formState.maxCartValue}
+                      onChange={(value) => setField("maxCartValue", value)}
+                      autoComplete="off"
+                    />
                   </InlineStack>
-                </BlockStack>
-              </Form>
-            </BlockStack>
-          </Card>
+                ) : null}
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="050">
+                    <Text as="h2" variant="headingMd">
+                      Offer products
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {offerCountLabel}
+                    </Text>
+                  </BlockStack>
+
+                  <Button onClick={addOffer}>Add offer product</Button>
+                </InlineStack>
+
+                {formState.offers.map((offer, index) => (
+                  <Box
+                    key={index}
+                    padding="400"
+                    borderWidth="025"
+                    borderColor="border"
+                    borderRadius="300"
+                  >
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <Text as="h3" variant="headingSm">
+                          Offer {index + 1}
+                        </Text>
+                        <Button
+                          tone="critical"
+                          variant="plain"
+                          onClick={() => removeOffer(index)}
+                          disabled={formState.offers.length === 1}
+                        >
+                          Remove
+                        </Button>
+                      </InlineStack>
+
+                      <InlineStack gap="300" wrap>
+                        <div style={{ minWidth: 220 }}>
+                          <Select
+                            label="Offer type"
+                            options={OFFER_MODE_OPTIONS}
+                            value={offer.offerMode}
+                            onChange={(value) => updateOffer(index, "offerMode", value)}
+                          />
+                        </div>
+
+                        {offer.offerMode === "SKU" ? (
+                          <TextField
+                            label="Offer SKU"
+                            value={offer.offerSku}
+                            onChange={(value) => updateOffer(index, "offerSku", value)}
+                            autoComplete="off"
+                          />
+                        ) : null}
+
+                        {offer.offerMode === "PRODUCT" ? (
+                          <TextField
+                            label="Offer product ID"
+                            value={offer.offerProductId}
+                            onChange={(value) =>
+                              updateOffer(index, "offerProductId", value)
+                            }
+                            autoComplete="off"
+                          />
+                        ) : null}
+
+                        {offer.offerMode === "VARIANT" ? (
+                          <TextField
+                            label="Offer variant ID"
+                            value={offer.offerVariantId}
+                            onChange={(value) =>
+                              updateOffer(index, "offerVariantId", value)
+                            }
+                            autoComplete="off"
+                          />
+                        ) : null}
+                      </InlineStack>
+
+                      <InlineStack gap="300" wrap>
+                        <TextField
+                          label="Offer title override"
+                          value={offer.offerTitleOverride}
+                          onChange={(value) =>
+                            updateOffer(index, "offerTitleOverride", value)
+                          }
+                          autoComplete="off"
+                        />
+                        <TextField
+                          label="Offer message"
+                          value={offer.offerMessage}
+                          onChange={(value) =>
+                            updateOffer(index, "offerMessage", value)
+                          }
+                          autoComplete="off"
+                        />
+                      </InlineStack>
+
+                      <InlineStack gap="300" wrap>
+                        <div style={{ minWidth: 220 }}>
+                          <Select
+                            label="Discount mode"
+                            options={DISCOUNT_MODE_OPTIONS}
+                            value={offer.discountMode}
+                            onChange={(value) =>
+                              updateOffer(index, "discountMode", value)
+                            }
+                          />
+                        </div>
+
+                        <TextField
+                          label="Discount value"
+                          type="number"
+                          value={offer.discountValue}
+                          onChange={(value) =>
+                            updateOffer(index, "discountValue", value)
+                          }
+                          autoComplete="off"
+                        />
+
+                        <TextField
+                          label="Discount label"
+                          value={offer.discountLabel}
+                          onChange={(value) =>
+                            updateOffer(index, "discountLabel", value)
+                          }
+                          autoComplete="off"
+                        />
+                      </InlineStack>
+                    </BlockStack>
+                  </Box>
+                ))}
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Schedule
+                </Text>
+
+                <InlineStack gap="300" wrap>
+                  <TextField
+                    label="Starts at"
+                    type="datetime-local"
+                    value={formState.startsAt}
+                    onChange={(value) => setField("startsAt", value)}
+                    autoComplete="off"
+                  />
+                  <TextField
+                    label="Ends at"
+                    type="datetime-local"
+                    value={formState.endsAt}
+                    onChange={(value) => setField("endsAt", value)}
+                    autoComplete="off"
+                  />
+                </InlineStack>
+              </BlockStack>
+            </Card>
+          </BlockStack>
         </Layout.Section>
 
         <Layout.Section>
