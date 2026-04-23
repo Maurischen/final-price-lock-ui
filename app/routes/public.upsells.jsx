@@ -15,10 +15,53 @@ export async function loader({ request }) {
       );
     }
 
+    // Get the current trigger product context, including collections
+    const triggerResponse = await admin.graphql(
+      `#graphql
+      query TriggerProductBySku($query: String!) {
+        productVariants(first: 1, query: $query) {
+          nodes {
+            id
+            sku
+            product {
+              id
+              tags
+              collections(first: 50) {
+                nodes {
+                  id
+                }
+              }
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          query: `sku:${sku}`,
+        },
+      },
+    );
+
+    const triggerJson = await triggerResponse.json();
+    const triggerVariant =
+      triggerJson?.data?.productVariants?.nodes?.[0] || null;
+
+    const triggerProductId = triggerVariant?.product?.id || null;
+    const triggerVariantId = triggerVariant?.id || null;
+    const triggerTags = triggerVariant?.product?.tags || [];
+    const triggerCollectionIds =
+      triggerVariant?.product?.collections?.nodes?.map((c) => c.id) || [];
+
     const result = await resolveUpsells({
       shop: session.shop,
       placement: "PRODUCT_PAGE",
-      context: { sku },
+      context: {
+        productId: triggerProductId,
+        variantId: triggerVariantId,
+        sku,
+        tags: triggerTags,
+        collectionIds: triggerCollectionIds,
+      },
     });
 
     const offerSkus = [
@@ -30,7 +73,7 @@ export async function loader({ request }) {
       ),
     ];
 
-    let productsBySku = {};
+    const productsBySku = {};
 
     if (offerSkus.length > 0) {
       const searchQuery = offerSkus.map((s) => `sku:${s}`).join(" OR ");

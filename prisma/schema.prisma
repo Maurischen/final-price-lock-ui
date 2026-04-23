@@ -146,6 +146,7 @@ model UpsellRule {
   triggerVariantId      String?
   triggerSku            String?
   triggerTag            String?
+  triggerCollectionId   String?
 
   minCartValue          Float?
   maxCartValue          Float?
@@ -171,6 +172,7 @@ model UpsellRule {
   @@index([shop, triggerVariantId])
   @@index([shop, triggerSku])
   @@index([shop, triggerTag])
+  @@index([shop, triggerCollectionId])
 }
 
 model UpsellOfferProduct {
@@ -217,6 +219,7 @@ enum UpsellTriggerMode {
   VARIANT
   SKU
   TAG
+  COLLECTION
   CART_VALUE
 }
 

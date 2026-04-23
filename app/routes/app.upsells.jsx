@@ -42,6 +42,7 @@ const TRIGGER_MODE_OPTIONS = [
   { label: "Product ID", value: "PRODUCT" },
   { label: "Variant ID", value: "VARIANT" },
   { label: "Tag", value: "TAG" },
+  { label: "Collection ID", value: "COLLECTION" },
   { label: "Cart value", value: "CART_VALUE" },
 ];
 
@@ -82,6 +83,7 @@ function createInitialFormState() {
     triggerVariantId: "",
     triggerSku: "",
     triggerTag: "",
+    triggerCollectionId: "",
     minCartValue: "",
     maxCartValue: "",
     priority: "100",
@@ -119,6 +121,7 @@ function mapRuleToFormState(rule) {
     triggerVariantId: rule.triggerVariantId || "",
     triggerSku: rule.triggerSku || "",
     triggerTag: rule.triggerTag || "",
+    triggerCollectionId: rule.triggerCollectionId || "",
     minCartValue: rule.minCartValue != null ? String(rule.minCartValue) : "",
     maxCartValue: rule.maxCartValue != null ? String(rule.maxCartValue) : "",
     priority: rule.priority != null ? String(rule.priority) : "100",
@@ -274,23 +277,20 @@ function RuleCard({ rule, onEdit }) {
           </Text>
 
           {rule.triggerProductId ? (
-            <Text as="p" variant="bodySm">
-              Product ID: {rule.triggerProductId}
-            </Text>
+            <Text as="p" variant="bodySm">Product ID: {rule.triggerProductId}</Text>
           ) : null}
           {rule.triggerVariantId ? (
-            <Text as="p" variant="bodySm">
-              Variant ID: {rule.triggerVariantId}
-            </Text>
+            <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
           ) : null}
           {rule.triggerSku ? (
-            <Text as="p" variant="bodySm">
-              SKU: {rule.triggerSku}
-            </Text>
+            <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
           ) : null}
           {rule.triggerTag ? (
+            <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
+          ) : null}
+          {rule.triggerCollectionId ? (
             <Text as="p" variant="bodySm">
-              Tag: {rule.triggerTag}
+              Collection ID: {rule.triggerCollectionId}
             </Text>
           ) : null}
           {(rule.minCartValue != null || rule.maxCartValue != null) && (
@@ -315,26 +315,17 @@ function RuleCard({ rule, onEdit }) {
                   <Text as="p" variant="bodySm">
                     <strong>Offer {index + 1}:</strong> {offer.offerMode}
                   </Text>
-
                   {offer.offerProductId ? (
-                    <Text as="p" variant="bodySm">
-                      Product ID: {offer.offerProductId}
-                    </Text>
+                    <Text as="p" variant="bodySm">Product ID: {offer.offerProductId}</Text>
                   ) : null}
                   {offer.offerVariantId ? (
-                    <Text as="p" variant="bodySm">
-                      Variant ID: {offer.offerVariantId}
-                    </Text>
+                    <Text as="p" variant="bodySm">Variant ID: {offer.offerVariantId}</Text>
                   ) : null}
                   {offer.offerSku ? (
-                    <Text as="p" variant="bodySm">
-                      SKU: {offer.offerSku}
-                    </Text>
+                    <Text as="p" variant="bodySm">SKU: {offer.offerSku}</Text>
                   ) : null}
                   {offer.offerMessage ? (
-                    <Text as="p" variant="bodySm">
-                      Message: {offer.offerMessage}
-                    </Text>
+                    <Text as="p" variant="bodySm">Message: {offer.offerMessage}</Text>
                   ) : null}
                   {offer.discountMode !== "NONE" ? (
                     <Text as="p" variant="bodySm">
@@ -360,7 +351,7 @@ function OfferTypeHelp() {
           <strong>SKU:</strong> Best when you already manage products by SKU. This is the easiest option for your current workflow and works well for supplier-fed catalogs.
         </Text>
         <Text as="p" variant="bodyMd">
-          <strong>Product ID:</strong> Targets a Shopify product. Use this when the offer should always point to the same product, regardless of which variant is selected later.
+          <strong>Product ID:</strong> Targets a Shopify product. Use this when the offer should always point to the same product.
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Variant ID:</strong> Most precise. Use this when you need the exact variant added to cart with no ambiguity.
@@ -385,6 +376,9 @@ function TriggerTypeHelp() {
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Tag:</strong> Show the upsell for any product with a matching tag.
+        </Text>
+        <Text as="p" variant="bodyMd">
+          <strong>Collection ID:</strong> Show the upsell when the current product belongs to a specific collection.
         </Text>
         <Text as="p" variant="bodyMd">
           <strong>Cart value:</strong> Show the upsell only when the basket total falls within a value range.
@@ -638,6 +632,15 @@ export default function UpsellsPage() {
                       label="Trigger tag"
                       value={formState.triggerTag}
                       onChange={(value) => setField("triggerTag", value)}
+                      autoComplete="off"
+                    />
+                  ) : null}
+
+                  {formState.triggerMode === "COLLECTION" ? (
+                    <TextField
+                      label="Trigger collection ID"
+                      value={formState.triggerCollectionId}
+                      onChange={(value) => setField("triggerCollectionId", value)}
                       autoComplete="off"
                     />
                   ) : null}

@@ -56,6 +56,7 @@ export function normalizeUpsellRuleInput(input = {}) {
     triggerVariantId: emptyToNull(input.triggerVariantId),
     triggerSku: emptyToNull(input.triggerSku),
     triggerTag: emptyToNull(input.triggerTag),
+    triggerCollectionId: emptyToNull(input.triggerCollectionId),
 
     minCartValue: toNumber(input.minCartValue),
     maxCartValue: toNumber(input.maxCartValue),
@@ -100,6 +101,12 @@ export function validateUpsellRuleInput(input = {}) {
     case "TAG":
       if (!input.triggerTag) {
         errors.triggerTag = "Trigger tag is required for TAG mode.";
+      }
+      break;
+    case "COLLECTION":
+      if (!input.triggerCollectionId) {
+        errors.triggerCollectionId =
+          "Trigger collection ID is required for COLLECTION mode.";
       }
       break;
     case "CART_VALUE":
@@ -221,6 +228,7 @@ export async function createUpsellRule(shop, rawInput) {
       triggerVariantId: normalized.triggerVariantId,
       triggerSku: normalized.triggerSku,
       triggerTag: normalized.triggerTag,
+      triggerCollectionId: normalized.triggerCollectionId,
 
       minCartValue: normalized.minCartValue,
       maxCartValue: normalized.maxCartValue,
@@ -278,6 +286,7 @@ export async function updateUpsellRule(id, shop, rawInput) {
       triggerVariantId: normalized.triggerVariantId,
       triggerSku: normalized.triggerSku,
       triggerTag: normalized.triggerTag,
+      triggerCollectionId: normalized.triggerCollectionId,
 
       minCartValue: normalized.minCartValue,
       maxCartValue: normalized.maxCartValue,
@@ -361,6 +370,7 @@ export async function duplicateUpsellRule(id, shop) {
       triggerVariantId: existing.triggerVariantId,
       triggerSku: existing.triggerSku,
       triggerTag: existing.triggerTag,
+      triggerCollectionId: existing.triggerCollectionId,
 
       minCartValue: existing.minCartValue,
       maxCartValue: existing.maxCartValue,

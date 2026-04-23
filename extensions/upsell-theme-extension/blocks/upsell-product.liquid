@@ -1,7 +1,12 @@
 <div
   id="upsell-block-{{ block.id }}"
   class="upsell-block"
+  data-product-id="{{ product.id }}"
+  data-product-title="{{ product.title | escape }}"
+  data-product-price="{{ product.selected_or_first_available_variant.price | money_without_currency | replace: ',', '' }}"
+  data-variant-id="{{ product.selected_or_first_available_variant.id }}"
   data-sku="{{ product.selected_or_first_available_variant.sku | strip }}"
+  data-image="{% if product.featured_image %}{{ product.featured_image | image_url: width: 300 }}{% endif %}"
   {{ block.shopify_attributes }}
 >
   <div class="upsell-block__inner">

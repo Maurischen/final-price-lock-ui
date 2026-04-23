@@ -43,8 +43,7 @@ function cartAlreadyHasOffer(cart, offer) {
     return (
       (offer.productId && merch.productId === offer.productId) ||
       (offer.variantId && merch.id === offer.variantId) ||
-      (offer.sku &&
-        normalizeString(merch.sku) === normalizeString(offer.sku))
+      (offer.sku && normalizeString(merch.sku) === normalizeString(offer.sku))
     );
   });
 }
@@ -54,18 +53,35 @@ function matchesProductContext(rule, context) {
   const variantId = context?.variantId || null;
   const sku = context?.sku || null;
   const tags = Array.isArray(context?.tags) ? context.tags : [];
+  const collectionIds = Array.isArray(context?.collectionIds)
+    ? context.collectionIds
+    : [];
 
   switch (rule.triggerMode) {
     case "PRODUCT":
       return !!rule.triggerProductId && rule.triggerProductId === productId;
+
     case "VARIANT":
       return !!rule.triggerVariantId && rule.triggerVariantId === variantId;
+
     case "SKU":
-      return !!rule.triggerSku && normalizeString(rule.triggerSku) === normalizeString(sku);
+      return (
+        !!rule.triggerSku &&
+        normalizeString(rule.triggerSku) === normalizeString(sku)
+      );
+
     case "TAG":
       return tags.map(normalizeString).includes(normalizeString(rule.triggerTag));
+
+    case "COLLECTION":
+      return (
+        !!rule.triggerCollectionId &&
+        collectionIds.includes(rule.triggerCollectionId)
+      );
+
     case "CART_VALUE":
       return false;
+
     default:
       return false;
   }
@@ -89,6 +105,7 @@ function matchesCartContext(rule, context) {
       variantId: merch.id,
       sku: merch.sku,
       tags: merch.productTags || [],
+      collectionIds: merch.collectionIds || [],
     });
   });
 }
@@ -161,6 +178,7 @@ export async function resolveProductPageUpsells({
   variantId = null,
   sku = null,
   tags = [],
+  collectionIds = [],
   cart = null,
 }) {
   return resolveUpsells({
@@ -171,6 +189,7 @@ export async function resolveProductPageUpsells({
       variantId,
       sku,
       tags,
+      collectionIds,
       cart,
     },
   });

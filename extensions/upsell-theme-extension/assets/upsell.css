@@ -186,3 +186,28 @@
     width: 100%;
   }
 }
+.upsell-item__button {
+  background: #ff3131;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.upsell-item__button:hover {
+  opacity: 0.95;
+}
+
+.upsell-item__button:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+
+.upsell-item__check--placeholder {
+  width: 18px;
+  height: 18px;
+}

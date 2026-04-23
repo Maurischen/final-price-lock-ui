@@ -48,12 +48,12 @@ function isProductInCart(cart, product) {
 
 function buildTriggerProduct(block) {
   return {
-    title: block.dataset.productTitle || "",
+    title: block.dataset.productTitle || "Selected product",
     price: block.dataset.productPrice || "",
     variantId: block.dataset.variantId || "",
     sku: block.dataset.sku || "",
     image: block.dataset.image || "",
-    imageAlt: block.dataset.productTitle || "",
+    imageAlt: block.dataset.productTitle || "Selected product",
     availableForSale: true,
     isTrigger: true,
     compareAtPrice: null,
@@ -94,13 +94,15 @@ function renderBundleItem({
   index = 0,
   selectable = false,
 }) {
+  if (!product) return "";
+
   const imageMarkup = product.image
     ? `<img class="upsell-item__image" src="${product.image}" alt="${product.imageAlt || product.title}">`
     : `<div class="upsell-item__image upsell-item__image--placeholder"></div>`;
 
   const savings = offer ? getSavingsAmount(product, offer) : 0;
   const discountedPrice = offer ? getDiscountedPrice(product, offer) : Number(product.price || 0);
-  const hasDiscount = savings > 0;
+  const hasDiscount = offer && savings > 0;
 
   const priceMarkup = hasDiscount
     ? `
@@ -136,14 +138,14 @@ function renderBundleItem({
         <span></span>
       </label>
     `
-    : "";
+    : `<div class="upsell-item__check upsell-item__check--placeholder"></div>`;
 
   return `
     <div class="upsell-item ${inCart ? "upsell-item--in-cart" : ""}">
       ${checkboxMarkup}
       ${imageMarkup}
       <div class="upsell-item__info">
-        <div class="upsell-item__name">${product.title}</div>
+        <div class="upsell-item__name">${product.title || "Selected product"}</div>
         ${priceMarkup}
         ${badgeMarkup}
         ${messageMarkup}
