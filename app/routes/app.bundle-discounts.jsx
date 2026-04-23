@@ -1,10 +1,25 @@
-import React from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Form,
   useLoaderData,
   useActionData,
   useNavigation,
 } from "react-router";
+import {
+  Page,
+  Layout,
+  Card,
+  Text,
+  TextField,
+  Checkbox,
+  Button,
+  InlineStack,
+  BlockStack,
+  Banner,
+  Box,
+  Badge,
+  Divider,
+} from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
 const TITLE = "Laptop Bundle Discount";
@@ -167,18 +182,12 @@ async function getCurrentStoreFunctionId(admin) {
     (item) => item?.title === DISCOUNT_TYPE_TITLE && item?.functionId,
   );
 
-  if (exactTitleMatch?.functionId) {
-    return exactTitleMatch.functionId;
-  }
+  if (exactTitleMatch?.functionId) return exactTitleMatch.functionId;
 
-  if (types.length === 1 && types[0]?.functionId) {
-    return types[0].functionId;
-  }
+  if (types.length === 1 && types[0]?.functionId) return types[0].functionId;
 
   const anyFunctionMatch = types.find((item) => item?.functionId);
-  if (anyFunctionMatch?.functionId) {
-    return anyFunctionMatch.functionId;
-  }
+  if (anyFunctionMatch?.functionId) return anyFunctionMatch.functionId;
 
   throw new Error(
     `Could not find a functionId for this store. Check appDiscountTypes and confirm the title "${DISCOUNT_TYPE_TITLE}".`,
@@ -337,65 +346,6 @@ export async function action({ request }) {
   }
 }
 
-export default function BundleDiscountsPage() {
-  const { title, status, config } = useLoaderData();
-  const actionData = useActionData();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
-
-  const configJson = JSON.stringify(config);
-
-  return (
-    <s-page heading="Bundle Discount Rules">
-      {actionData?.error && (
-        <s-section>
-          <s-box padding="base" background="bg-critical-strong" borderRadius="loose">
-            <s-text as="p">Error: {actionData.error}</s-text>
-          </s-box>
-        </s-section>
-      )}
-
-      {actionData?.ok && !actionData.error && (
-        <s-section>
-          <s-box padding="base" background="bg-success-strong" borderRadius="loose">
-            <s-text as="p">Bundle discount rules saved successfully.</s-text>
-          </s-box>
-        </s-section>
-      )}
-
-      <s-section>
-        <s-paragraph>
-          Manage laptop bundle rules for the automatic discount:{" "}
-          <strong>{title}</strong>
-          {status ? ` (${status})` : ""}
-        </s-paragraph>
-
-        <BundleRulesEditor initialConfig={config} isSubmitting={isSubmitting} />
-      </s-section>
-
-      <s-section>
-        <details>
-          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-            View current JSON config
-          </summary>
-          <pre
-            style={{
-              marginTop: "12px",
-              background: "#f6f6f7",
-              padding: "12px",
-              borderRadius: "6px",
-              overflowX: "auto",
-              fontSize: "12px",
-            }}
-          >
-            {configJson}
-          </pre>
-        </details>
-      </s-section>
-    </s-page>
-  );
-}
-
 function cloneRule(rule) {
   return {
     ...rule,
@@ -415,7 +365,7 @@ function validateConfig(config) {
     }
 
     if (!String(rule.triggerSku || "").trim()) {
-      errors.push(`Rule ${ruleIndex + 1}: Trigger laptop SKU is required.`);
+      errors.push(`Rule ${ruleIndex + 1}: Trigger SKU is required.`);
     }
 
     const ratio = parseInt(rule.ratio, 10);
@@ -433,7 +383,9 @@ function validateConfig(config) {
 
     accessories.forEach((accessory, accessoryIndex) => {
       const sku = String(accessory.sku || "").trim();
-      const discountAmount = parseFloat(String(accessory.discountAmount || "").replace(",", "."));
+      const discountAmount = parseFloat(
+        String(accessory.discountAmount || "").replace(",", "."),
+      );
 
       if (!sku) {
         errors.push(
@@ -463,22 +415,20 @@ function validateConfig(config) {
 }
 
 function BundleRulesEditor({ initialConfig, isSubmitting }) {
-  const [config, setConfig] = React.useState(normalizeConfig(initialConfig));
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [collapsedRules, setCollapsedRules] = React.useState({});
+  const [config, setConfig] = useState(normalizeConfig(initialConfig));
+  const [searchTerm, setSearchTerm] = useState("");
+  const [collapsedRules, setCollapsedRules] = useState({});
 
-  React.useEffect(() => {
+  useEffect(() => {
     setConfig(normalizeConfig(initialConfig));
   }, [initialConfig]);
 
-  const validationErrors = React.useMemo(() => validateConfig(config), [config]);
+  const validationErrors = useMemo(() => validateConfig(config), [config]);
 
-  const visibleRuleIndexes = React.useMemo(() => {
+  const visibleRuleIndexes = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
-    if (!term) {
-      return config.rules.map((_, index) => index);
-    }
+    if (!term) return config.rules.map((_, index) => index);
 
     return config.rules
       .map((rule, index) => ({ rule, index }))
@@ -579,9 +529,10 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
   function removeAccessory(ruleIndex, accessoryIndex) {
     setConfig((prev) => {
       const next = structuredClone(prev);
-      next.rules[ruleIndex].accessories = next.rules[ruleIndex].accessories.filter(
-        (_, index) => index !== accessoryIndex,
-      );
+      next.rules[ruleIndex].accessories =
+        next.rules[ruleIndex].accessories.filter(
+          (_, index) => index !== accessoryIndex,
+        );
 
       if (next.rules[ruleIndex].accessories.length === 0) {
         next.rules[ruleIndex].accessories.push(emptyAccessory());
@@ -596,308 +547,357 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
       <input type="hidden" name="_action" value="save" />
       <input type="hidden" name="config" value={JSON.stringify(config)} />
 
-      <s-box display="flex" flexDirection="column" gap="base">
-        <s-box
-          display="flex"
-          flexDirection="row"
-          gap="base"
-          alignItems="end"
-          style={{ flexWrap: "wrap" }}
-        >
-          <s-box flex="2">
-            <label>
-              <s-text as="p" fontWeight="medium">Search rules</s-text>
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by rule name, trigger SKU, accessory SKU or label"
-                style={inputStyle}
-              />
-            </label>
-          </s-box>
+      <BlockStack gap="400">
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="end" gap="300" wrap>
+              <Box minWidth="320px">
+                <TextField
+                  label="Search rules"
+                  value={searchTerm}
+                  onChange={setSearchTerm}
+                  placeholder="Search by rule name, trigger SKU, accessory SKU or label"
+                  autoComplete="off"
+                />
+              </Box>
 
-          <s-box display="flex" gap="base">
-            <s-button type="button" variant="secondary" onClick={expandAll}>
-              Expand all
-            </s-button>
-            <s-button type="button" variant="secondary" onClick={collapseAll}>
-              Collapse all
-            </s-button>
-          </s-box>
-        </s-box>
+              <InlineStack gap="200">
+                <Button onClick={expandAll}>Expand all</Button>
+                <Button onClick={collapseAll}>Collapse all</Button>
+              </InlineStack>
+            </InlineStack>
 
-        {validationErrors.length > 0 && (
-          <s-box padding="base" background="bg-caution-strong" borderRadius="loose">
-            <s-text as="p" fontWeight="bold">Please fix these before saving:</s-text>
-            <ul style={{ margin: "8px 0 0 18px" }}>
-              {validationErrors.map((error, index) => (
-                <li key={`validation-${index}`}>{error}</li>
-              ))}
-            </ul>
-          </s-box>
-        )}
+            {validationErrors.length > 0 ? (
+              <Banner tone="warning" title="Please fix these before saving">
+                <BlockStack gap="100">
+                  {validationErrors.map((error, index) => (
+                    <Text key={`validation-${index}`} as="p" variant="bodySm">
+                      {error}
+                    </Text>
+                  ))}
+                </BlockStack>
+              </Banner>
+            ) : null}
 
-        {config.rules.length === 0 && (
-          <s-box padding="base" background="bg-surface-secondary" borderRadius="loose">
-            <s-text as="p">No bundle rules yet. Add your first laptop bundle below.</s-text>
-          </s-box>
-        )}
+            {config.rules.length === 0 ? (
+              <Banner title="No bundle rules yet">
+                <Text as="p">Add your first bundle rule below.</Text>
+              </Banner>
+            ) : null}
 
-        {visibleRuleIndexes.length === 0 && config.rules.length > 0 && (
-          <s-box padding="base" background="bg-surface-secondary" borderRadius="loose">
-            <s-text as="p">No rules match your search.</s-text>
-          </s-box>
-        )}
+            {visibleRuleIndexes.length === 0 && config.rules.length > 0 ? (
+              <Banner title="No matching rules">
+                <Text as="p">No rules match your search.</Text>
+              </Banner>
+            ) : null}
+          </BlockStack>
+        </Card>
 
         {visibleRuleIndexes.map((ruleIndex) => {
           const rule = config.rules[ruleIndex];
           const isCollapsed = Boolean(collapsedRules[ruleIndex]);
 
           return (
-            <s-box
-              key={`rule-${ruleIndex}`}
-              padding="base"
-              borderWidth="1"
-              borderColor="border-subdued"
-              borderRadius="loose"
-            >
-              <s-box display="flex" flexDirection="column" gap="base">
-                <s-box display="flex" justifyContent="space-between" alignItems="center">
-                  <s-box display="flex" flexDirection="column" gap="tight">
-                    <s-text as="h3" fontWeight="bold">
-                      {rule.name || `Rule ${ruleIndex + 1}`}
-                    </s-text>
-                    <s-text as="p" tone="subdued">
-                      Trigger SKU: {rule.triggerSku || "Not set"} | Accessories: {(rule.accessories || []).length}
-                    </s-text>
-                  </s-box>
+            <Card key={`rule-${ruleIndex}`}>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center" gap="300">
+                  <BlockStack gap="100">
+                    <InlineStack gap="200" blockAlign="center">
+                      <Text as="h3" variant="headingMd">
+                        {rule.name || `Rule ${ruleIndex + 1}`}
+                      </Text>
+                      <Badge tone={rule.active ? "success" : undefined}>
+                        {rule.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </InlineStack>
 
-                  <s-box display="flex" gap="base" alignItems="center">
-                    <button
-                      type="button"
-                      onClick={() => toggleRule(ruleIndex)}
-                      style={plainButtonStyle}
-                    >
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Trigger SKU: {rule.triggerSku || "Not set"} | Accessories:{" "}
+                      {(rule.accessories || []).length}
+                    </Text>
+                  </BlockStack>
+
+                  <InlineStack gap="200">
+                    <Button onClick={() => toggleRule(ruleIndex)}>
                       {isCollapsed ? "Expand" : "Collapse"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => duplicateRule(ruleIndex)}
-                      style={plainButtonStyle}
-                    >
+                    </Button>
+                    <Button onClick={() => duplicateRule(ruleIndex)}>
                       Duplicate
-                    </button>
-
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      tone="critical"
+                      variant="secondary"
                       onClick={() => removeRule(ruleIndex)}
-                      style={dangerButtonStyle}
                     >
                       Remove
-                    </button>
-                  </s-box>
-                </s-box>
+                    </Button>
+                  </InlineStack>
+                </InlineStack>
 
-                {!isCollapsed && (
-                  <>
-                    <s-box display="flex" flexDirection="row" gap="base">
-                      <s-box flex="1">
-                        <label>
-                          <s-text as="p" fontWeight="medium">Rule name</s-text>
-                          <input
-                            value={rule.name}
-                            onChange={(e) => updateRule(ruleIndex, { name: e.target.value })}
-                            placeholder="e.g. ASUS Vivobook Bundle"
-                            style={inputStyle}
-                          />
-                        </label>
-                      </s-box>
+                {!isCollapsed ? (
+                  <BlockStack gap="400">
+                    <Divider />
 
-                      <s-box flex="1">
-                        <label>
-                          <s-text as="p" fontWeight="medium">Trigger laptop SKU</s-text>
-                          <input
-                            value={rule.triggerSku}
-                            onChange={(e) => updateRule(ruleIndex, { triggerSku: e.target.value })}
-                            placeholder="e.g. M1605NAQ-716512S0W"
-                            style={inputStyle}
-                          />
-                        </label>
-                      </s-box>
-                    </s-box>
+                    <InlineStack gap="300" wrap>
+                      <Box minWidth="260px">
+                        <TextField
+                          label="Rule name"
+                          value={rule.name}
+                          onChange={(value) =>
+                            updateRule(ruleIndex, { name: value })
+                          }
+                          placeholder="e.g. ASUS Vivobook Bundle"
+                          autoComplete="off"
+                        />
+                      </Box>
 
-                    <s-box display="flex" flexDirection="row" gap="base">
-                      <s-box flex="1">
-                        <label>
-                          <s-text as="p" fontWeight="medium">Ratio</s-text>
-                          <input
-                            type="number"
-                            min="1"
-                            value={rule.ratio}
-                            onChange={(e) => updateRule(ruleIndex, { ratio: e.target.value })}
-                            placeholder="1"
-                            style={inputStyle}
-                          />
-                        </label>
-                      </s-box>
+                      <Box minWidth="260px">
+                        <TextField
+                          label="Trigger SKU"
+                          value={rule.triggerSku}
+                          onChange={(value) =>
+                            updateRule(ruleIndex, { triggerSku: value })
+                          }
+                          placeholder="e.g. M1605NAQ-716512S0W"
+                          autoComplete="off"
+                        />
+                      </Box>
 
-                      <s-box flex="2">
-                        <label>
-                          <s-text as="p" fontWeight="medium">Discount message</s-text>
-                          <input
-                            value={rule.message}
-                            onChange={(e) => updateRule(ruleIndex, { message: e.target.value })}
-                            placeholder="e.g. Laptop accessory bundle discount"
-                            style={inputStyle}
-                          />
-                        </label>
-                      </s-box>
+                      <Box minWidth="140px">
+                        <TextField
+                          label="Ratio"
+                          type="number"
+                          min={1}
+                          value={String(rule.ratio)}
+                          onChange={(value) =>
+                            updateRule(ruleIndex, { ratio: value })
+                          }
+                          autoComplete="off"
+                        />
+                      </Box>
+                    </InlineStack>
 
-                      <s-box flex="1">
-                        <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "24px" }}>
-                          <input
-                            type="checkbox"
-                            checked={rule.active}
-                            onChange={(e) => updateRule(ruleIndex, { active: e.target.checked })}
-                          />
-                          <s-text as="span">Active</s-text>
-                        </label>
-                      </s-box>
-                    </s-box>
+                    <TextField
+                      label="Discount message"
+                      value={rule.message}
+                      onChange={(value) =>
+                        updateRule(ruleIndex, { message: value })
+                      }
+                      placeholder="e.g. Laptop accessory bundle discount"
+                      autoComplete="off"
+                    />
 
-                    <s-box paddingBlockStart="base">
-                      <s-text as="h4" fontWeight="bold">Accessories</s-text>
-                    </s-box>
+                    <Checkbox
+                      label="Active"
+                      checked={Boolean(rule.active)}
+                      onChange={(checked) =>
+                        updateRule(ruleIndex, { active: checked })
+                      }
+                    />
 
-                    {rule.accessories.map((accessory, accessoryIndex) => (
-                      <s-box
-                        key={`rule-${ruleIndex}-accessory-${accessoryIndex}`}
-                        padding="base"
-                        background="bg-surface-secondary"
-                        borderRadius="loose"
-                      >
-                        <s-box display="flex" flexDirection="column" gap="base">
-                          <s-box display="flex" justifyContent="space-between" alignItems="center">
-                            <s-text as="p" fontWeight="medium">
-                              Accessory {accessoryIndex + 1}
-                            </s-text>
+                    <Divider />
 
-                            <button
-                              type="button"
-                              onClick={() => removeAccessory(ruleIndex, accessoryIndex)}
-                              style={dangerButtonStyle}
-                            >
-                              Remove
-                            </button>
-                          </s-box>
-
-                          <s-box display="flex" flexDirection="row" gap="base">
-                            <s-box flex="1">
-                              <label>
-                                <s-text as="p" fontWeight="medium">Accessory SKU</s-text>
-                                <input
-                                  value={accessory.sku}
-                                  onChange={(e) =>
-                                    updateAccessory(ruleIndex, accessoryIndex, {
-                                      sku: e.target.value,
-                                    })
-                                  }
-                                  placeholder="e.g. T54"
-                                  style={inputStyle}
-                                />
-                              </label>
-                            </s-box>
-
-                            <s-box flex="1">
-                              <label>
-                                <s-text as="p" fontWeight="medium">Discount amount</s-text>
-                                <input
-                                  value={accessory.discountAmount}
-                                  onChange={(e) =>
-                                    updateAccessory(ruleIndex, accessoryIndex, {
-                                      discountAmount: e.target.value,
-                                    })
-                                  }
-                                  placeholder="e.g. 30"
-                                  style={inputStyle}
-                                />
-                              </label>
-                            </s-box>
-
-                            <s-box flex="2">
-                              <label>
-                                <s-text as="p" fontWeight="medium">Label</s-text>
-                                <input
-                                  value={accessory.label}
-                                  onChange={(e) =>
-                                    updateAccessory(ruleIndex, accessoryIndex, {
-                                      label: e.target.value,
-                                    })
-                                  }
-                                  placeholder='e.g. Bag less R30'
-                                  style={inputStyle}
-                                />
-                              </label>
-                            </s-box>
-                          </s-box>
-                        </s-box>
-                      </s-box>
-                    ))}
-
-                    <s-box>
-                      <s-button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => addAccessory(ruleIndex)}
-                      >
+                    <InlineStack align="space-between" blockAlign="center">
+                      <Text as="h4" variant="headingSm">
+                        Accessories
+                      </Text>
+                      <Button onClick={() => addAccessory(ruleIndex)}>
                         Add accessory
-                      </s-button>
-                    </s-box>
-                  </>
-                )}
-              </s-box>
-            </s-box>
+                      </Button>
+                    </InlineStack>
+
+                    <BlockStack gap="300">
+                      {(rule.accessories || []).map(
+                        (accessory, accessoryIndex) => (
+                          <Box
+                            key={`rule-${ruleIndex}-accessory-${accessoryIndex}`}
+                            padding="300"
+                            background="bg-surface-secondary"
+                            borderRadius="300"
+                          >
+                            <BlockStack gap="300">
+                              <InlineStack
+                                align="space-between"
+                                blockAlign="center"
+                              >
+                                <Text as="p" variant="bodyMd" fontWeight="semibold">
+                                  Accessory {accessoryIndex + 1}
+                                </Text>
+
+                                <Button
+                                  tone="critical"
+                                  variant="plain"
+                                  onClick={() =>
+                                    removeAccessory(ruleIndex, accessoryIndex)
+                                  }
+                                >
+                                  Remove
+                                </Button>
+                              </InlineStack>
+
+                              <InlineStack gap="300" wrap>
+                                <Box minWidth="220px">
+                                  <TextField
+                                    label="Accessory SKU"
+                                    value={accessory.sku}
+                                    onChange={(value) =>
+                                      updateAccessory(
+                                        ruleIndex,
+                                        accessoryIndex,
+                                        { sku: value },
+                                      )
+                                    }
+                                    placeholder="e.g. T54"
+                                    autoComplete="off"
+                                  />
+                                </Box>
+
+                                <Box minWidth="180px">
+                                  <TextField
+                                    label="Discount amount"
+                                    value={accessory.discountAmount}
+                                    onChange={(value) =>
+                                      updateAccessory(
+                                        ruleIndex,
+                                        accessoryIndex,
+                                        { discountAmount: value },
+                                      )
+                                    }
+                                    placeholder="e.g. 30"
+                                    autoComplete="off"
+                                  />
+                                </Box>
+
+                                <Box minWidth="260px">
+                                  <TextField
+                                    label="Label"
+                                    value={accessory.label}
+                                    onChange={(value) =>
+                                      updateAccessory(
+                                        ruleIndex,
+                                        accessoryIndex,
+                                        { label: value },
+                                      )
+                                    }
+                                    placeholder="e.g. Bag less R30"
+                                    autoComplete="off"
+                                  />
+                                </Box>
+                              </InlineStack>
+                            </BlockStack>
+                          </Box>
+                        ),
+                      )}
+                    </BlockStack>
+                  </BlockStack>
+                ) : null}
+              </BlockStack>
+            </Card>
           );
         })}
 
-        <s-box display="flex" gap="base">
-          <s-button type="button" variant="secondary" onClick={addRule}>
-            Add rule
-          </s-button>
+        <InlineStack align="space-between" blockAlign="center">
+          <Button onClick={addRule}>Add rule</Button>
 
-          <s-button
+          <Button
+            submit
             variant="primary"
-            type="submit"
-            disabled={isSubmitting || validationErrors.length > 0}
+            loading={isSubmitting}
+            disabled={validationErrors.length > 0}
           >
-            {isSubmitting ? "Saving…" : "Save rules"}
-          </s-button>
-        </s-box>
-      </s-box>
+            Save rules
+          </Button>
+        </InlineStack>
+      </BlockStack>
     </Form>
   );
 }
 
-const inputStyle = {
-  width: "100%",
-  padding: "8px",
-  borderRadius: "4px",
-  border: "1px solid #c4cdd5",
-};
+export default function BundleDiscountsPage() {
+  const { ok, error, title, status, config } = useLoaderData();
+  const actionData = useActionData();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+  const configJson = JSON.stringify(config, null, 2);
 
-const plainButtonStyle = {
-  background: "transparent",
-  border: "none",
-  color: "#2c6ecb",
-  cursor: "pointer",
-  fontWeight: 600,
-};
+  return (
+    <Page
+      title="Bundle Discount Rules"
+      subtitle="Manage the automatic discount configuration used by your cart lines discount function."
+    >
+      <Layout>
+        <Layout.Section>
+          <BlockStack gap="400">
+            {!ok || error ? (
+              <Banner tone="critical" title="Could not load discount settings">
+                <Text as="p">{error}</Text>
+              </Banner>
+            ) : null}
 
-const dangerButtonStyle = {
-  background: "transparent",
-  border: "none",
-  color: "#b42318",
-  cursor: "pointer",
-  fontWeight: 600,
-};
+            {actionData?.error ? (
+              <Banner tone="critical" title="Could not save bundle rules">
+                <Text as="p">{actionData.error}</Text>
+              </Banner>
+            ) : null}
+
+            {actionData?.ok && !actionData.error ? (
+              <Banner tone="success" title="Bundle discount rules saved">
+                <Text as="p">
+                  Your automatic discount configuration has been updated.
+                </Text>
+              </Banner>
+            ) : null}
+
+            <Card>
+              <InlineStack align="space-between" blockAlign="center" gap="300">
+                <BlockStack gap="100">
+                  <Text as="h2" variant="headingMd">
+                    Automatic discount
+                  </Text>
+                  <Text as="p" variant="bodyMd">
+                    {title}
+                  </Text>
+                </BlockStack>
+
+                {status ? (
+                  <Badge tone={status === "ACTIVE" ? "success" : undefined}>
+                    {status}
+                  </Badge>
+                ) : null}
+              </InlineStack>
+            </Card>
+
+            <BundleRulesEditor
+              initialConfig={config}
+              isSubmitting={isSubmitting}
+            />
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Current JSON config
+                </Text>
+                <Box
+                  padding="300"
+                  background="bg-surface-secondary"
+                  borderRadius="300"
+                >
+                  <pre
+                    style={{
+                      margin: 0,
+                      overflowX: "auto",
+                      fontSize: "12px",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {configJson}
+                  </pre>
+                </Box>
+              </BlockStack>
+            </Card>
+          </BlockStack>
+        </Layout.Section>
+      </Layout>
+    </Page>
+  );
+}
