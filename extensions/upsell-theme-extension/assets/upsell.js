@@ -210,8 +210,13 @@ function renderSummary(total, savings, itemCount, quantity) {
 
 function getSelectedBundleState(triggerProduct, offersState, quantity) {
   const selectedItems = [triggerProduct];
-  let total = (Number(triggerProduct.price || 0) || 0) * quantity;
-  let savings = 0;
+
+  const triggerDiscountOffer = triggerProduct.triggerDiscountOffer || null;
+  const triggerDiscountedPrice = getDiscountedPrice(triggerProduct, triggerDiscountOffer);
+  const triggerSavings = getSavingsAmount(triggerProduct, triggerDiscountOffer);
+
+  let total = triggerDiscountedPrice * quantity;
+  let savings = triggerSavings * quantity;
 
   for (const offerState of offersState) {
     if (!offerState.selected || offerState.inCart) continue;
@@ -419,8 +424,15 @@ async function initUpsellBlocks(root = document) {
 
       const offersState = [];
       const renderedOfferItems = [];
+      let triggerDiscountOffer = null;
 
       for (const rule of data.rules) {
+        if (!triggerDiscountOffer && rule.triggerDiscount) {
+          triggerDiscountOffer = {
+            discount: rule.triggerDiscount,
+          };
+        }
+
         const offers = Array.isArray(rule.offers) ? rule.offers : [];
 
         for (const offer of offers) {
@@ -452,6 +464,8 @@ async function initUpsellBlocks(root = document) {
         }
       }
 
+      triggerProduct.triggerDiscountOffer = triggerDiscountOffer;
+
       if (!renderedOfferItems.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
         if (wrapper) wrapper.style.display = "none";
@@ -471,6 +485,7 @@ async function initUpsellBlocks(root = document) {
             <div class="upsell-bundle__section-title">Your item</div>
             ${renderBundleItem({
               product: triggerProduct,
+              offer: triggerDiscountOffer,
               inCart: triggerInCart,
               selectable: false,
             })}

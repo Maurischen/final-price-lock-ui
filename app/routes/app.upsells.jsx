@@ -87,6 +87,9 @@ function createInitialFormState() {
     triggerSku: "",
     triggerTag: "",
     triggerCollectionId: "",
+    triggerDiscountMode: "NONE",
+    triggerDiscountValue: "",
+    triggerDiscountLabel: "",
     minCartValue: "",
     maxCartValue: "",
     priority: "100",
@@ -126,6 +129,10 @@ function mapRuleToFormState(rule) {
     triggerSku: rule.triggerSku || "",
     triggerTag: rule.triggerTag || "",
     triggerCollectionId: rule.triggerCollectionId || "",
+    triggerDiscountMode: rule.triggerDiscountMode || "NONE",
+    triggerDiscountValue:
+      rule.triggerDiscountValue != null ? String(rule.triggerDiscountValue) : "",
+    triggerDiscountLabel: rule.triggerDiscountLabel || "",
     minCartValue: rule.minCartValue != null ? String(rule.minCartValue) : "",
     maxCartValue: rule.maxCartValue != null ? String(rule.maxCartValue) : "",
     priority: rule.priority != null ? String(rule.priority) : "100",
@@ -290,6 +297,12 @@ function RuleCard({ rule, onEdit, isCollapsed, onToggleCollapse }) {
               {rule.triggerCollectionId ? (
                 <Text as="p" variant="bodySm">
                   Collection ID: {rule.triggerCollectionId}
+                </Text>
+              ) : null}
+              {rule.triggerDiscountMode && rule.triggerDiscountMode !== "NONE" ? (
+                <Text as="p" variant="bodySm">
+                  Trigger discount: {rule.triggerDiscountMode} {rule.triggerDiscountValue ?? ""}
+                  {rule.triggerDiscountLabel ? ` (${rule.triggerDiscountLabel})` : ""}
                 </Text>
               ) : null}
               {(rule.minCartValue != null || rule.maxCartValue != null) && (
@@ -981,6 +994,44 @@ export default function UpsellsPage() {
                 ) : null}
               </BlockStack>
             </Card>
+
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Trigger product discount
+                </Text>
+
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Optional discount applied to the main trigger product when the bundle is purchased.
+                </Text>
+
+                <InlineStack gap="300" wrap>
+                  <div style={{ minWidth: 220 }}>
+                    <Select
+                      label="Trigger discount mode"
+                      options={DISCOUNT_MODE_OPTIONS}
+                      value={formState.triggerDiscountMode}
+                      onChange={(value) => setField("triggerDiscountMode", value)}
+                    />
+                  </div>
+
+                  <TextField
+                    label="Trigger discount value"
+                    type="number"
+                    value={formState.triggerDiscountValue}
+                    onChange={(value) => setField("triggerDiscountValue", value)}
+                    autoComplete="off"
+                  />
+
+                  <TextField
+                    label="Trigger discount label"
+                    value={formState.triggerDiscountLabel}
+                    onChange={(value) => setField("triggerDiscountLabel", value)}
+                    autoComplete="off"
+                  />
+                </InlineStack>
+              </BlockStack>
+            </Card>      
 
             <Card>
               <BlockStack gap="400">

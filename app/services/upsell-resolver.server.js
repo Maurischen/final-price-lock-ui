@@ -159,6 +159,13 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
         type: rule.type,
         placement: rule.placement,
         priority: rule.priority,
+
+        triggerDiscount: {
+          mode: rule.triggerDiscountMode || "NONE",
+          value: rule.triggerDiscountValue,
+          label: rule.triggerDiscountLabel,
+        },
+
         offers,
         rawRule: rule,
       };

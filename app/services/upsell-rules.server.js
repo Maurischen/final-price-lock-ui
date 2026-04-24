@@ -57,6 +57,9 @@ export function normalizeUpsellRuleInput(input = {}) {
     triggerSku: emptyToNull(input.triggerSku),
     triggerTag: emptyToNull(input.triggerTag),
     triggerCollectionId: emptyToNull(input.triggerCollectionId),
+    triggerDiscountMode: emptyToNull(input.triggerDiscountMode) || "NONE",
+    triggerDiscountValue: toNumber(input.triggerDiscountValue),
+    triggerDiscountLabel: emptyToNull(input.triggerDiscountLabel),
 
     minCartValue: toNumber(input.minCartValue),
     maxCartValue: toNumber(input.maxCartValue),
@@ -81,6 +84,11 @@ export function validateUpsellRuleInput(input = {}) {
   if (!input.type) errors.type = "Type is required.";
   if (!input.placement) errors.placement = "Placement is required.";
   if (!input.triggerMode) errors.triggerMode = "Trigger mode is required.";
+  if (input.triggerDiscountMode && input.triggerDiscountMode !== "NONE") {
+  if (input.triggerDiscountValue == null || Number(input.triggerDiscountValue) <= 0) {
+    errors.triggerDiscountValue = "Trigger discount value must be greater than 0.";
+  }
+}
 
   switch (input.triggerMode) {
     case "PRODUCT":
@@ -229,6 +237,9 @@ export async function createUpsellRule(shop, rawInput) {
       triggerSku: normalized.triggerSku,
       triggerTag: normalized.triggerTag,
       triggerCollectionId: normalized.triggerCollectionId,
+      triggerDiscountMode: normalized.triggerDiscountMode,
+      triggerDiscountValue: normalized.triggerDiscountValue,
+      triggerDiscountLabel: normalized.triggerDiscountLabel,
 
       minCartValue: normalized.minCartValue,
       maxCartValue: normalized.maxCartValue,
@@ -287,6 +298,9 @@ export async function updateUpsellRule(id, shop, rawInput) {
       triggerSku: normalized.triggerSku,
       triggerTag: normalized.triggerTag,
       triggerCollectionId: normalized.triggerCollectionId,
+      triggerDiscountMode: normalized.triggerDiscountMode,
+      triggerDiscountValue: normalized.triggerDiscountValue,
+      triggerDiscountLabel: normalized.triggerDiscountLabel,
 
       minCartValue: normalized.minCartValue,
       maxCartValue: normalized.maxCartValue,
@@ -371,6 +385,9 @@ export async function duplicateUpsellRule(id, shop) {
       triggerSku: existing.triggerSku,
       triggerTag: existing.triggerTag,
       triggerCollectionId: existing.triggerCollectionId,
+      triggerDiscountMode: existing.triggerDiscountMode,
+      triggerDiscountValue: existing.triggerDiscountValue,
+      triggerDiscountLabel: existing.triggerDiscountLabel,
 
       minCartValue: existing.minCartValue,
       maxCartValue: existing.maxCartValue,
