@@ -1,11 +1,4 @@
-import {
-  ProductDiscountSelectionStrategy,
-} from "../generated/api";
-
-/**
- * @typedef {import("../generated/api").CartInput} CartInput
- * @typedef {import("../generated/api").CartLinesDiscountsGenerateRunResult} Result
- */
+import { ProductDiscountSelectionStrategy } from "../generated/api";
 
 const OPEN_BOX_DISCOUNT_PERCENT = 25;
 const OPEN_BOX_CONDITION_VALUE = "Open Box";
@@ -53,18 +46,6 @@ function getProductId(cartLine) {
   return typeof variant?.product?.id === "string" ? variant.product.id : null;
 }
 
-function getTotalQtyByRule(lines, rule) {
-  let total = 0;
-
-  for (const line of lines) {
-    if (lineMatchesTrigger(line, rule)) {
-      total += Number(line.quantity || 0);
-    }
-  }
-
-  return total;
-}
-
 function buildFixedAmountCandidate(lineId, quantity, discountAmount, message) {
   return {
     message,
@@ -104,14 +85,14 @@ function buildPercentageCandidate(lineId, quantity, percentage, message) {
   };
 }
 
-function buildDiscountCandidate(lineId, quantity, accessory, message) {
-  const discountMode = accessory.discountMode || "FIXED";
+function buildDiscountCandidate(lineId, quantity, discountConfig, message) {
+  const discountMode = discountConfig.discountMode || "FIXED";
 
   if (discountMode === "PERCENTAGE") {
     return buildPercentageCandidate(
       lineId,
       quantity,
-      accessory.discountPercentage || accessory.discountValue,
+      discountConfig.discountPercentage || discountConfig.discountValue,
       message,
     );
   }
@@ -119,27 +100,9 @@ function buildDiscountCandidate(lineId, quantity, accessory, message) {
   return buildFixedAmountCandidate(
     lineId,
     quantity,
-    accessory.discountAmount || accessory.discountValue,
+    discountConfig.discountAmount || discountConfig.discountValue,
     message,
   );
-}
-
-function buildTriggerDiscountCandidate(lineId, quantity, rule) {
-  const discountMode = rule.triggerDiscountMode || "NONE";
-
-  if (discountMode === "NONE") return null;
-
-  const message =
-    rule.triggerDiscountLabel ||
-    rule.message ||
-    "Bundle discount";
-
-  const triggerDiscount = {
-    discountMode,
-    discountValue: rule.triggerDiscountValue,
-  };
-
-  return buildDiscountCandidate(lineId, quantity, triggerDiscount, message);
 }
 
 function lineMatchesTrigger(line, rule) {
@@ -201,6 +164,18 @@ function lineMatchesAccessory(line, accessory) {
   return Boolean(skuMatch || variantMatch || productMatch);
 }
 
+function getTotalQtyByRule(lines, rule) {
+  let total = 0;
+
+  for (const line of lines) {
+    if (lineMatchesTrigger(line, rule)) {
+      total += Number(line.quantity || 0);
+    }
+  }
+
+  return total;
+}
+
 /**
  * ===== OPEN BOX =====
  */
@@ -247,6 +222,35 @@ function getBundleRules(input) {
 }
 
 /**
+ * ===== TRIGGER DISCOUNT =====
+ */
+
+function buildTriggerDiscountCandidate(lineId, quantity, rule) {
+  const discountMode = rule.triggerDiscountMode || "NONE";
+  const discountValue = Number(rule.triggerDiscountValue || 0);
+
+  if (discountMode === "NONE") return null;
+  if (!Number.isFinite(discountValue) || discountValue <= 0) return null;
+
+  const message =
+    rule.triggerDiscountLabel ||
+    rule.message ||
+    "Bundle discount";
+
+  return buildDiscountCandidate(
+    lineId,
+    quantity,
+    {
+      discountMode,
+      discountValue,
+      discountAmount: discountMode === "FIXED" ? discountValue : null,
+      discountPercentage: discountMode === "PERCENTAGE" ? discountValue : null,
+    },
+    message,
+  );
+}
+
+/**
  * ===== BUNDLE LOGIC =====
  */
 
@@ -264,33 +268,12 @@ function buildBundleCandidates(input) {
 
     const maxDiscountable = triggerQty * (Number(rule.ratio || 1) || 1);
 
-    // Discount the trigger/main item if configured
-    for (const line of lines) {
-      if (!lineMatchesTrigger(line, rule)) continue;
-
-      const lineQty = Number(line.quantity || 0);
-      if (!lineQty || lineQty <= 0) continue;
-
-      const qty = Math.min(lineQty, triggerQty);
-
-      const triggerCandidate = buildTriggerDiscountCandidate(
-        line.id,
-        qty,
-        rule,
-      );
-
-      if (triggerCandidate) {
-        candidates.push(triggerCandidate);
-      }
-    }
-
-    // Discount the accessory/offer items
+    // 1) Discount offer/accessory lines
     for (const accessory of rule.accessories || []) {
       let remaining = maxDiscountable;
 
       for (const line of lines) {
         if (remaining <= 0) break;
-
         if (!lineMatchesAccessory(line, accessory)) continue;
 
         const lineQty = Number(line.quantity || 0);
@@ -311,8 +294,38 @@ function buildBundleCandidates(input) {
         );
 
         candidates.push(candidate);
-
         remaining -= qty;
+      }
+    }
+
+    // 2) Discount trigger lines, if configured
+    if (
+      rule.triggerDiscountMode &&
+      rule.triggerDiscountMode !== "NONE" &&
+      Number(rule.triggerDiscountValue || 0) > 0
+    ) {
+      let remainingTriggerQty = triggerQty;
+
+      for (const line of lines) {
+        if (remainingTriggerQty <= 0) break;
+        if (!lineMatchesTrigger(line, rule)) continue;
+
+        const lineQty = Number(line.quantity || 0);
+        if (!lineQty || lineQty <= 0) continue;
+
+        const qty = Math.min(lineQty, remainingTriggerQty);
+
+        const triggerCandidate = buildTriggerDiscountCandidate(
+          line.id,
+          qty,
+          rule,
+        );
+
+        if (triggerCandidate) {
+          candidates.push(triggerCandidate);
+        }
+
+        remainingTriggerQty -= qty;
       }
     }
   }
