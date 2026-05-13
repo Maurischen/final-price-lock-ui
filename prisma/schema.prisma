@@ -205,6 +205,38 @@ model UpsellOfferProduct {
   @@index([ruleId, position])
 }
 
+model PromoDisplayRule {
+  id              String   @id @default(cuid())
+
+  shop            String
+  source          String   // STANDALONE | BUNDLE | UPSELL | PRE_LOVED
+  sourceId        String?
+
+  sku             String
+  productId       String?
+  variantId       String?
+
+  discountType    String   // FIXED | PERCENTAGE
+  discountAmount  Int?
+  discountPercent Float?
+
+  label           String?
+  priority        Int      @default(100)
+  isEnabled       Boolean  @default(true)
+
+  startsAt        DateTime?
+  endsAt          DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shop])
+  @@index([sku])
+  @@index([source])
+  @@index([variantId])
+  @@unique([shop, source, sku])
+}
+
 enum UpsellRuleType {
   UPSELL
   CROSS_SELL
