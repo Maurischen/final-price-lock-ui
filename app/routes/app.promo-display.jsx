@@ -1,5 +1,5 @@
-import { redirect } from "react-router";
-import { Form, useLoaderData, useActionData } from "react-router";
+import { useState } from "react";
+import { Form, useLoaderData, useActionData, redirect } from "react-router";
 import {
   Page,
   Layout,
@@ -24,10 +24,8 @@ import {
 } from "../services/promo-display.server";
 
 export async function loader({ request }) {
-  const { admin, session } = await authenticate.admin(request);
-
+  const { session } = await authenticate.admin(request);
   const rules = await listPromoDisplayRules(session.shop);
-
   return Response.json({ rules });
 }
 
@@ -78,24 +76,20 @@ export async function action({ request }) {
     }
 
     if (intent === "disable") {
-      const id = String(formData.get("id") || "");
-
       await disablePromoDisplayRule({
         admin,
         shop: session.shop,
-        id,
+        id: String(formData.get("id") || ""),
       });
 
       return redirect("/app/promo-display");
     }
 
     if (intent === "delete") {
-      const id = String(formData.get("id") || "");
-
       await deletePromoDisplayRule({
         admin,
         shop: session.shop,
-        id,
+        id: String(formData.get("id") || ""),
       });
 
       return redirect("/app/promo-display");
@@ -103,13 +97,25 @@ export async function action({ request }) {
 
     return Response.json({ error: "Unknown action." }, { status: 400 });
   } catch (error) {
-    return Response.json({ error: error.message || "Something went wrong." }, { status: 500 });
+    return Response.json(
+      { error: error.message || "Something went wrong." },
+      { status: 500 },
+    );
   }
 }
 
 export default function PromoDisplayPage() {
   const { rules } = useLoaderData();
   const actionData = useActionData();
+
+  const [sku, setSku] = useState("");
+  const [source, setSource] = useState("STANDALONE");
+  const [discountType, setDiscountType] = useState("FIXED");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountPercent, setDiscountPercent] = useState("");
+  const [label, setLabel] = useState("");
+  const [priority, setPriority] = useState("100");
+  const [isEnabled, setIsEnabled] = useState(true);
 
   const rows = rules.map((rule) => [
     rule.sku,
@@ -158,11 +164,14 @@ export default function PromoDisplayPage() {
 
               <Form method="post">
                 <input type="hidden" name="_intent" value="save" />
+                <input type="hidden" name="isEnabled" value={isEnabled ? "on" : "off"} />
 
                 <BlockStack gap="300">
                   <TextField
                     label="SKU"
                     name="sku"
+                    value={sku}
+                    onChange={setSku}
                     autoComplete="off"
                     placeholder="Example: ABC-123"
                     requiredIndicator
@@ -171,6 +180,8 @@ export default function PromoDisplayPage() {
                   <Select
                     label="Promo source"
                     name="source"
+                    value={source}
+                    onChange={setSource}
                     options={[
                       { label: "Standalone", value: "STANDALONE" },
                       { label: "Bundle", value: "BUNDLE" },
@@ -182,6 +193,8 @@ export default function PromoDisplayPage() {
                   <Select
                     label="Discount type"
                     name="discountType"
+                    value={discountType}
+                    onChange={setDiscountType}
                     options={[
                       { label: "Fixed amount", value: "FIXED" },
                       { label: "Percentage", value: "PERCENTAGE" },
@@ -193,6 +206,8 @@ export default function PromoDisplayPage() {
                     name="discountAmount"
                     type="number"
                     step="0.01"
+                    value={discountAmount}
+                    onChange={setDiscountAmount}
                     autoComplete="off"
                     placeholder="101.00"
                     helpText="Example: 101.00 will display as SAVE R101.00"
@@ -203,6 +218,8 @@ export default function PromoDisplayPage() {
                     name="discountPercent"
                     type="number"
                     step="0.01"
+                    value={discountPercent}
+                    onChange={setDiscountPercent}
                     autoComplete="off"
                     placeholder="25"
                     helpText="Only used when discount type is Percentage."
@@ -211,6 +228,8 @@ export default function PromoDisplayPage() {
                   <TextField
                     label="Display label"
                     name="label"
+                    value={label}
+                    onChange={setLabel}
                     autoComplete="off"
                     placeholder="SAVE R101"
                     helpText="Optional. If blank, the theme can fall back to the amount."
@@ -220,13 +239,19 @@ export default function PromoDisplayPage() {
                     label="Priority"
                     name="priority"
                     type="number"
+                    value={priority}
+                    onChange={setPriority}
                     autoComplete="off"
-                    value="100"
                     helpText="Lower number wins if you later sync multiple promo sources."
                   />
 
                   <label>
-                    <input type="checkbox" name="isEnabled" defaultChecked /> Enabled
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={(event) => setIsEnabled(event.target.checked)}
+                    />{" "}
+                    Enabled
                   </label>
 
                   <Button submit variant="primary">
