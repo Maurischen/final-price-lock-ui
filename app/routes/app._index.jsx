@@ -149,6 +149,20 @@ export default function AppIndex() {
 
       <s-section>
         <s-paragraph>
+          Need to manage <strong>promo price displays</strong> for standalone,
+          bundle, upsell, or pre-loved discounts? Open the promo display rules
+          panel below.
+        </s-paragraph>
+
+        <Form method="get" action="/app/promo-display">
+          <s-button variant="secondary" type="submit">
+            Open Promo Display Rules
+          </s-button>
+        </Form>
+      </s-section>
+
+      <s-section>
+        <s-paragraph>
           Need to update the <strong>Stock Availability</strong> metafield based
           on online and store stock? Open the sync tool below.
         </s-paragraph>
@@ -159,6 +173,7 @@ export default function AppIndex() {
           </s-button>
         </Form>
       </s-section>
+    
     </s-page>
   );
 }
