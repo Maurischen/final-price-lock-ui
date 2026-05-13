@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, useLoaderData, useActionData, redirect } from "react-router";
+import { Form, useLoaderData, useActionData, redirect, useSubmit } from "react-router";
 import {
   Page,
   Layout,
@@ -107,6 +107,7 @@ export async function action({ request }) {
 export default function PromoDisplayPage() {
   const { rules } = useLoaderData();
   const actionData = useActionData();
+  const submit = useSubmit();
 
   const [sku, setSku] = useState("");
   const [source, setSource] = useState("STANDALONE");
@@ -117,32 +118,68 @@ export default function PromoDisplayPage() {
   const [priority, setPriority] = useState("100");
   const [isEnabled, setIsEnabled] = useState(true);
 
-  const rows = rules.map((rule) => [
-    rule.sku,
-    rule.source,
-    rule.discountType,
+  function editRule(rule) {
+  setSku(rule.sku || "");
+  setSource(rule.source || "STANDALONE");
+  setDiscountType(rule.discountType || "FIXED");
+  setDiscountAmount(
     rule.discountType === "FIXED"
-      ? `R ${(Number(rule.discountAmount || 0) / 100).toFixed(2)}`
-      : `${rule.discountPercent}%`,
-    rule.label || "-",
-    rule.priority,
-    rule.isEnabled ? <Badge tone="success">Enabled</Badge> : <Badge tone="critical">Disabled</Badge>,
-    <InlineStack gap="200" key={rule.id}>
-      {rule.isEnabled && (
-        <Form method="post">
-          <input type="hidden" name="_intent" value="disable" />
-          <input type="hidden" name="id" value={rule.id} />
-          <Button submit size="slim">Disable</Button>
-        </Form>
-      )}
+      ? String((Number(rule.discountAmount || 0) / 100).toFixed(2))
+      : ""
+  );
+  setDiscountPercent(
+    rule.discountType === "PERCENTAGE"
+      ? String(rule.discountPercent || "")
+      : ""
+  );
+  setLabel(rule.label || "");
+  setPriority(String(rule.priority || 100));
+  setIsEnabled(Boolean(rule.isEnabled));
+}
 
-      <Form method="post">
-        <input type="hidden" name="_intent" value="delete" />
-        <input type="hidden" name="id" value={rule.id} />
-        <Button submit size="slim" tone="critical">Delete</Button>
-      </Form>
-    </InlineStack>,
-  ]);
+const rows = rules.map((rule) => [
+  rule.sku,
+  rule.source,
+  rule.discountType,
+  rule.discountType === "FIXED"
+    ? `R ${(Number(rule.discountAmount || 0) / 100).toFixed(2)}`
+    : `${rule.discountPercent}%`,
+  rule.label || "-",
+  rule.priority,
+  rule.isEnabled ? <Badge tone="success">Enabled</Badge> : <Badge tone="critical">Disabled</Badge>,
+  <InlineStack gap="200" key={rule.id}>
+    <Button size="slim" onClick={() => editRule(rule)}>
+      Edit
+    </Button>
+
+    {rule.isEnabled && (
+      <Button
+        size="slim"
+        onClick={() =>
+          submit(
+            { _intent: "disable", id: rule.id },
+            { method: "post" }
+          )
+        }
+      >
+        Disable
+      </Button>
+    )}
+
+    <Button
+      size="slim"
+      tone="critical"
+      onClick={() =>
+        submit(
+          { _intent: "delete", id: rule.id },
+          { method: "post" }
+        )
+      }
+    >
+      Delete
+    </Button>
+  </InlineStack>,
+]);
 
   return (
     <Page title="Promo Display Rules">
@@ -255,7 +292,7 @@ export default function PromoDisplayPage() {
                   </label>
 
                   <Button submit variant="primary">
-                    Save promo display
+                    Save / Update promo display
                   </Button>
                 </BlockStack>
               </Form>
