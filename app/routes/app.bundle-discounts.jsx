@@ -464,7 +464,9 @@ function validateConfig(config) {
     if (sku) {
       const normalizedSku = sku.toUpperCase();
       if (seenStandaloneSkus.has(normalizedSku)) {
-        errors.push(`Standalone discount ${index + 1}: Duplicate SKU "${sku}" found.`);
+        errors.push(
+          `Standalone discount ${index + 1}: Duplicate SKU "${sku}" found.`,
+        );
       }
       seenStandaloneSkus.add(normalizedSku);
     }
@@ -492,6 +494,8 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
   const [config, setConfig] = useState(normalizeConfig(initialConfig));
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedRules, setCollapsedRules] = useState({});
+  const [collapsedStandaloneDiscounts, setCollapsedStandaloneDiscounts] =
+    useState({});
 
   useEffect(() => {
     setConfig(normalizeConfig(initialConfig));
@@ -646,6 +650,29 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
     }));
   }
 
+  function toggleStandaloneDiscount(index) {
+    setCollapsedStandaloneDiscounts((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  }
+
+  function expandAllStandaloneDiscounts() {
+    const next = {};
+    (config.standaloneDiscounts || []).forEach((_, index) => {
+      next[index] = false;
+    });
+    setCollapsedStandaloneDiscounts(next);
+  }
+
+  function collapseAllStandaloneDiscounts() {
+    const next = {};
+    (config.standaloneDiscounts || []).forEach((_, index) => {
+      next[index] = true;
+    });
+    setCollapsedStandaloneDiscounts(next);
+  }
+
   return (
     <Form method="post">
       <input type="hidden" name="_action" value="save" />
@@ -666,8 +693,8 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
               </Box>
 
               <InlineStack gap="200">
-                <Button onClick={expandAll}>Expand all</Button>
-                <Button onClick={collapseAll}>Collapse all</Button>
+                <Button onClick={expandAll}>Expand all bundles</Button>
+                <Button onClick={collapseAll}>Collapse all bundles</Button>
               </InlineStack>
             </InlineStack>
 
@@ -902,7 +929,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
 
         <Card>
           <BlockStack gap="400">
-            <InlineStack align="space-between" blockAlign="center">
+            <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
               <BlockStack gap="100">
                 <Text as="h2" variant="headingMd">
                   Standalone Product Discounts
@@ -912,9 +939,17 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                 </Text>
               </BlockStack>
 
-              <Button onClick={addStandaloneDiscount}>
-                Add standalone discount
-              </Button>
+              <InlineStack gap="200">
+                <Button onClick={expandAllStandaloneDiscounts}>
+                  Expand all
+                </Button>
+                <Button onClick={collapseAllStandaloneDiscounts}>
+                  Collapse all
+                </Button>
+                <Button onClick={addStandaloneDiscount}>
+                  Add standalone discount
+                </Button>
+              </InlineStack>
             </InlineStack>
 
             {(config.standaloneDiscounts || []).length === 0 ? (
@@ -926,108 +961,133 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
             ) : null}
 
             <BlockStack gap="300">
-              {(config.standaloneDiscounts || []).map((item, index) => (
-                <Box
-                  key={`standalone-${index}`}
-                  padding="300"
-                  background="bg-surface-secondary"
-                  borderRadius="300"
-                >
-                  <BlockStack gap="300">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <InlineStack gap="200" blockAlign="center">
-                        <Text as="p" variant="bodyMd" fontWeight="semibold">
-                          Standalone discount {index + 1}
-                        </Text>
-                        <Badge tone={item.active ? "success" : undefined}>
-                          {item.active ? "Active" : "Inactive"}
-                        </Badge>
+              {(config.standaloneDiscounts || []).map((item, index) => {
+                const isCollapsed = Boolean(
+                  collapsedStandaloneDiscounts[index],
+                );
+
+                return (
+                  <Box
+                    key={`standalone-${index}`}
+                    padding="300"
+                    background="bg-surface-secondary"
+                    borderRadius="300"
+                  >
+                    <BlockStack gap="300">
+                      <InlineStack align="space-between" blockAlign="center">
+                        <InlineStack gap="200" blockAlign="center">
+                          <Text as="p" variant="bodyMd" fontWeight="semibold">
+                            Standalone discount {index + 1}
+                          </Text>
+                          <Badge tone={item.active ? "success" : undefined}>
+                            {item.active ? "Active" : "Inactive"}
+                          </Badge>
+                          {item.sku ? (
+                            <Text as="p" variant="bodySm" tone="subdued">
+                              SKU: {item.sku}
+                            </Text>
+                          ) : null}
+                        </InlineStack>
+
+                        <InlineStack gap="200">
+                          <Button onClick={() => toggleStandaloneDiscount(index)}>
+                            {isCollapsed ? "Expand" : "Collapse"}
+                          </Button>
+
+                          <Button
+                            tone="critical"
+                            variant="plain"
+                            onClick={() => removeStandaloneDiscount(index)}
+                          >
+                            Remove
+                          </Button>
+                        </InlineStack>
                       </InlineStack>
 
-                      <Button
-                        tone="critical"
-                        variant="plain"
-                        onClick={() => removeStandaloneDiscount(index)}
-                      >
-                        Remove
-                      </Button>
-                    </InlineStack>
+                      {!isCollapsed ? (
+                        <BlockStack gap="300">
+                          <InlineStack gap="300" wrap>
+                            <Box minWidth="220px">
+                              <TextField
+                                label="SKU"
+                                value={item.sku}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, { sku: value })
+                                }
+                                placeholder="e.g. PROMO-SKU-1"
+                                autoComplete="off"
+                              />
+                            </Box>
 
-                    <InlineStack gap="300" wrap>
-                      <Box minWidth="220px">
-                        <TextField
-                          label="SKU"
-                          value={item.sku}
-                          onChange={(value) =>
-                            updateStandaloneDiscount(index, { sku: value })
-                          }
-                          placeholder="e.g. PROMO-SKU-1"
-                          autoComplete="off"
-                        />
-                      </Box>
+                            <Box minWidth="180px">
+                              <Select
+                                label="Discount type"
+                                options={[
+                                  { label: "Fixed amount", value: "FIXED" },
+                                  { label: "Percentage", value: "PERCENTAGE" },
+                                ]}
+                                value={item.discountMode || "FIXED"}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, {
+                                    discountMode: value,
+                                  })
+                                }
+                              />
+                            </Box>
 
-                      <Box minWidth="180px">
-                        <Select
-                          label="Discount type"
-                          options={[
-                            { label: "Fixed amount", value: "FIXED" },
-                            { label: "Percentage", value: "PERCENTAGE" },
-                          ]}
-                          value={item.discountMode || "FIXED"}
-                          onChange={(value) =>
-                            updateStandaloneDiscount(index, {
-                              discountMode: value,
-                            })
-                          }
-                        />
-                      </Box>
+                            <Box minWidth="180px">
+                              <TextField
+                                label={
+                                  item.discountMode === "PERCENTAGE"
+                                    ? "Discount percentage"
+                                    : "Discount amount"
+                                }
+                                type="number"
+                                value={item.discountAmount}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, {
+                                    discountAmount: value,
+                                  })
+                                }
+                                placeholder={
+                                  item.discountMode === "PERCENTAGE"
+                                    ? "e.g. 10"
+                                    : "e.g. 101"
+                                }
+                                autoComplete="off"
+                              />
+                            </Box>
 
-                      <Box minWidth="180px">
-                        <TextField
-                          label={
-                            item.discountMode === "PERCENTAGE"
-                              ? "Discount percentage"
-                              : "Discount amount"
-                          }
-                          type="number"
-                          value={item.discountAmount}
-                          onChange={(value) =>
-                            updateStandaloneDiscount(index, {
-                              discountAmount: value,
-                            })
-                          }
-                          placeholder={
-                            item.discountMode === "PERCENTAGE" ? "e.g. 10" : "e.g. 101"
-                          }
-                          autoComplete="off"
-                        />
-                      </Box>
+                            <Box minWidth="260px">
+                              <TextField
+                                label="Message"
+                                value={item.message}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, {
+                                    message: value,
+                                  })
+                                }
+                                placeholder="e.g. Promo discount"
+                                autoComplete="off"
+                              />
+                            </Box>
+                          </InlineStack>
 
-                      <Box minWidth="260px">
-                        <TextField
-                          label="Message"
-                          value={item.message}
-                          onChange={(value) =>
-                            updateStandaloneDiscount(index, {
-                              message: value,
-                            })
-                          }
-                          placeholder="e.g. Promo discount"
-                          autoComplete="off"
-                        />
-                      </Box>
-                    </InlineStack>
-
-                    <Checkbox
-                      label="Active"
-                      checked={Boolean(item.active)}
-                      onChange={(checked) =>
-                        updateStandaloneDiscount(index, { active: checked })
-                      }
-                    />
-                  </BlockStack>
-                </Box>
-              ))}
+                          <Checkbox
+                            label="Active"
+                            checked={Boolean(item.active)}
+                            onChange={(checked) =>
+                              updateStandaloneDiscount(index, {
+                                active: checked,
+                              })
+                            }
+                          />
+                        </BlockStack>
+                      ) : null}
+                    </BlockStack>
+                  </Box>
+                );
+              })}
             </BlockStack>
           </BlockStack>
         </Card>
