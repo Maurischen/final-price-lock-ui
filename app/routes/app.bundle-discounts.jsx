@@ -19,6 +19,7 @@ import {
   Box,
   Badge,
   Divider,
+  Select,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
@@ -26,10 +27,6 @@ const TITLE = "Laptop Bundle Discount";
 const NAMESPACE = "$app:bundle-discount";
 const KEY = "function-configuration";
 
-/**
- * Match this to the discount type title your function exposes.
- * If needed, adjust after checking appDiscountTypes in GraphiQL.
- */
 const DISCOUNT_TYPE_TITLE = "SKU Price Lock";
 
 const GET_APP_DISCOUNT_TYPES_QUERY = `#graphql
@@ -102,6 +99,16 @@ function emptyAccessory() {
   };
 }
 
+function emptyStandaloneDiscount() {
+  return {
+    active: true,
+    sku: "",
+    discountMode: "FIXED",
+    discountAmount: "",
+    message: "Promo discount",
+  };
+}
+
 function emptyRule() {
   return {
     name: "",
@@ -114,12 +121,13 @@ function emptyRule() {
 }
 
 function normalizeConfig(rawConfig) {
-  if (!rawConfig || typeof rawConfig !== "object" || !Array.isArray(rawConfig.rules)) {
-    return { rules: [] };
-  }
+  const rules = Array.isArray(rawConfig?.rules) ? rawConfig.rules : [];
+  const standaloneDiscounts = Array.isArray(rawConfig?.standaloneDiscounts)
+    ? rawConfig.standaloneDiscounts
+    : [];
 
   return {
-    rules: rawConfig.rules.map((rule) => ({
+    rules: rules.map((rule) => ({
       name: String(rule?.name || ""),
       active: Boolean(rule?.active ?? true),
       triggerSku: String(rule?.triggerSku || ""),
@@ -136,6 +144,19 @@ function normalizeConfig(rawConfig) {
               label: String(accessory?.label || ""),
             }))
           : [emptyAccessory()],
+    })),
+
+    standaloneDiscounts: standaloneDiscounts.map((item) => ({
+      active: Boolean(item?.active ?? true),
+      sku: String(item?.sku || ""),
+      discountMode: item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+      discountAmount:
+        item?.discountAmount === 0 || item?.discountAmount
+          ? String(item.discountAmount)
+          : item?.amount === 0 || item?.amount
+            ? String(item.amount)
+            : "",
+      message: String(item?.message || "Promo discount"),
     })),
   };
 }
@@ -168,6 +189,23 @@ function sanitizeConfig(rawConfig) {
       }))
       .filter(
         (rule) => rule.name && rule.triggerSku && rule.accessories.length > 0,
+      ),
+
+    standaloneDiscounts: config.standaloneDiscounts
+      .map((item) => ({
+        active: Boolean(item.active),
+        sku: String(item.sku || "").trim(),
+        discountMode: item.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+        discountAmount: parseFloat(
+          String(item.discountAmount || "").replace(",", "."),
+        ),
+        message: String(item.message || "").trim() || "Promo discount",
+      }))
+      .filter(
+        (item) =>
+          item.sku &&
+          Number.isFinite(item.discountAmount) &&
+          item.discountAmount > 0,
       ),
   };
 }
@@ -235,7 +273,7 @@ async function findOrCreateBundleDiscount(admin) {
             namespace: NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify({ rules: [] }),
+            value: JSON.stringify({ rules: [], standaloneDiscounts: [] }),
           },
         ],
       },
@@ -260,7 +298,7 @@ async function findOrCreateBundleDiscount(admin) {
     id: newDiscountId,
     title: TITLE,
     status: createPayload?.automaticAppDiscount?.status || "",
-    config: { rules: [] },
+    config: { rules: [], standaloneDiscounts: [] },
   };
 }
 
@@ -285,7 +323,7 @@ export async function loader({ request }) {
       error: err.message || "Failed to load bundle discount settings.",
       title: TITLE,
       status: "",
-      config: { rules: [] },
+      config: { rules: [], standaloneDiscounts: [] },
     };
   }
 }
@@ -409,6 +447,42 @@ function validateConfig(config) {
         );
       }
     });
+  });
+
+  const seenStandaloneSkus = new Set();
+
+  (config.standaloneDiscounts || []).forEach((item, index) => {
+    const sku = String(item.sku || "").trim();
+    const discountAmount = parseFloat(
+      String(item.discountAmount || "").replace(",", "."),
+    );
+
+    if (!sku) {
+      errors.push(`Standalone discount ${index + 1}: SKU is required.`);
+    }
+
+    if (sku) {
+      const normalizedSku = sku.toUpperCase();
+      if (seenStandaloneSkus.has(normalizedSku)) {
+        errors.push(`Standalone discount ${index + 1}: Duplicate SKU "${sku}" found.`);
+      }
+      seenStandaloneSkus.add(normalizedSku);
+    }
+
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      errors.push(
+        `Standalone discount ${index + 1}: Discount amount must be greater than 0.`,
+      );
+    }
+
+    if (
+      item.discountMode === "PERCENTAGE" &&
+      (discountAmount <= 0 || discountAmount > 100)
+    ) {
+      errors.push(
+        `Standalone discount ${index + 1}: Percentage must be between 1 and 100.`,
+      );
+    }
   });
 
   return errors;
@@ -540,6 +614,36 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
 
       return next;
     });
+  }
+
+  function addStandaloneDiscount() {
+    setConfig((prev) => ({
+      ...prev,
+      standaloneDiscounts: [
+        ...(prev.standaloneDiscounts || []),
+        emptyStandaloneDiscount(),
+      ],
+    }));
+  }
+
+  function updateStandaloneDiscount(index, updates) {
+    setConfig((prev) => {
+      const next = structuredClone(prev);
+      next.standaloneDiscounts[index] = {
+        ...next.standaloneDiscounts[index],
+        ...updates,
+      };
+      return next;
+    });
+  }
+
+  function removeStandaloneDiscount(index) {
+    setConfig((prev) => ({
+      ...prev,
+      standaloneDiscounts: (prev.standaloneDiscounts || []).filter(
+        (_, itemIndex) => itemIndex !== index,
+      ),
+    }));
   }
 
   return (
@@ -796,8 +900,140 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
           );
         })}
 
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="h2" variant="headingMd">
+                  Standalone Product Discounts
+                </Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Discount products directly by SKU without needing a trigger product.
+                </Text>
+              </BlockStack>
+
+              <Button onClick={addStandaloneDiscount}>
+                Add standalone discount
+              </Button>
+            </InlineStack>
+
+            {(config.standaloneDiscounts || []).length === 0 ? (
+              <Banner title="No standalone discounts yet">
+                <Text as="p">
+                  Add a SKU here when you want that product to receive its own discount automatically.
+                </Text>
+              </Banner>
+            ) : null}
+
+            <BlockStack gap="300">
+              {(config.standaloneDiscounts || []).map((item, index) => (
+                <Box
+                  key={`standalone-${index}`}
+                  padding="300"
+                  background="bg-surface-secondary"
+                  borderRadius="300"
+                >
+                  <BlockStack gap="300">
+                    <InlineStack align="space-between" blockAlign="center">
+                      <InlineStack gap="200" blockAlign="center">
+                        <Text as="p" variant="bodyMd" fontWeight="semibold">
+                          Standalone discount {index + 1}
+                        </Text>
+                        <Badge tone={item.active ? "success" : undefined}>
+                          {item.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </InlineStack>
+
+                      <Button
+                        tone="critical"
+                        variant="plain"
+                        onClick={() => removeStandaloneDiscount(index)}
+                      >
+                        Remove
+                      </Button>
+                    </InlineStack>
+
+                    <InlineStack gap="300" wrap>
+                      <Box minWidth="220px">
+                        <TextField
+                          label="SKU"
+                          value={item.sku}
+                          onChange={(value) =>
+                            updateStandaloneDiscount(index, { sku: value })
+                          }
+                          placeholder="e.g. PROMO-SKU-1"
+                          autoComplete="off"
+                        />
+                      </Box>
+
+                      <Box minWidth="180px">
+                        <Select
+                          label="Discount type"
+                          options={[
+                            { label: "Fixed amount", value: "FIXED" },
+                            { label: "Percentage", value: "PERCENTAGE" },
+                          ]}
+                          value={item.discountMode || "FIXED"}
+                          onChange={(value) =>
+                            updateStandaloneDiscount(index, {
+                              discountMode: value,
+                            })
+                          }
+                        />
+                      </Box>
+
+                      <Box minWidth="180px">
+                        <TextField
+                          label={
+                            item.discountMode === "PERCENTAGE"
+                              ? "Discount percentage"
+                              : "Discount amount"
+                          }
+                          type="number"
+                          value={item.discountAmount}
+                          onChange={(value) =>
+                            updateStandaloneDiscount(index, {
+                              discountAmount: value,
+                            })
+                          }
+                          placeholder={
+                            item.discountMode === "PERCENTAGE" ? "e.g. 10" : "e.g. 101"
+                          }
+                          autoComplete="off"
+                        />
+                      </Box>
+
+                      <Box minWidth="260px">
+                        <TextField
+                          label="Message"
+                          value={item.message}
+                          onChange={(value) =>
+                            updateStandaloneDiscount(index, {
+                              message: value,
+                            })
+                          }
+                          placeholder="e.g. Promo discount"
+                          autoComplete="off"
+                        />
+                      </Box>
+                    </InlineStack>
+
+                    <Checkbox
+                      label="Active"
+                      checked={Boolean(item.active)}
+                      onChange={(checked) =>
+                        updateStandaloneDiscount(index, { active: checked })
+                      }
+                    />
+                  </BlockStack>
+                </Box>
+              ))}
+            </BlockStack>
+          </BlockStack>
+        </Card>
+
         <InlineStack align="space-between" blockAlign="center">
-          <Button onClick={addRule}>Add rule</Button>
+          <Button onClick={addRule}>Add bundle rule</Button>
 
           <Button
             submit

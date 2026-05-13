@@ -332,6 +332,84 @@ function buildBundleCandidates(input) {
 
   return candidates;
 }
+/**
+ * ===== STANDALONE PRODUCT DISCOUNTS =====
+ */
+
+function getStandaloneDiscounts(input) {
+  const config = input.discount?.metafield?.jsonValue;
+
+  if (!config || !Array.isArray(config.standaloneDiscounts)) {
+    return [];
+  }
+
+  return config.standaloneDiscounts;
+}
+
+function lineMatchesStandaloneDiscount(line, discountRule) {
+  const sku = getVariantSku(line);
+  const variantId = getVariantId(line);
+  const productId = getProductId(line);
+
+  const skuMatch =
+    discountRule.sku && sku && normalize(discountRule.sku) === normalize(sku);
+
+  const variantMatch =
+    discountRule.variantId &&
+    variantId &&
+    normalize(discountRule.variantId) === normalize(variantId);
+
+  const productMatch =
+    discountRule.productId &&
+    productId &&
+    normalize(discountRule.productId) === normalize(productId);
+
+  return Boolean(skuMatch || variantMatch || productMatch);
+}
+
+function buildStandaloneDiscountCandidates(input) {
+  const candidates = [];
+  const lines = input.cart.lines;
+  const standaloneDiscounts = getStandaloneDiscounts(input);
+
+  for (const discountRule of standaloneDiscounts) {
+    if (!discountRule.active) continue;
+
+    const discountAmount = Number(
+      discountRule.discountAmount || discountRule.discountValue || discountRule.amount || 0,
+    );
+
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) continue;
+
+    for (const line of lines) {
+      if (!lineMatchesStandaloneDiscount(line, discountRule)) continue;
+
+      const lineQty = Number(line.quantity || 0);
+      if (!lineQty || lineQty <= 0) continue;
+
+      const message =
+        discountRule.label ||
+        discountRule.message ||
+        "Promo discount";
+
+      candidates.push(
+        buildDiscountCandidate(
+          line.id,
+          lineQty,
+          {
+            discountMode: discountRule.discountMode || "FIXED",
+            discountAmount,
+            discountValue: discountAmount,
+            discountPercentage: discountRule.discountPercentage,
+          },
+          message,
+        ),
+      );
+    }
+  }
+
+  return candidates;
+}
 
 /**
  * ===== MAIN =====
@@ -341,9 +419,10 @@ export function cartLinesDiscountsGenerateRun(input) {
   const operations = [];
 
   const candidates = [
-    ...buildOpenBoxCandidates(input),
-    ...buildBundleCandidates(input),
-  ];
+  ...buildOpenBoxCandidates(input),
+  ...buildBundleCandidates(input),
+  ...buildStandaloneDiscountCandidates(input),
+ ];
 
   if (!candidates.length) {
     return { operations };

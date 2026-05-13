@@ -97,6 +97,7 @@ async function findOrCreateBundleDiscount(admin) {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
+        config: node.metafield?.jsonValue || {},
       };
     }
   }
@@ -120,7 +121,7 @@ async function findOrCreateBundleDiscount(admin) {
             namespace: NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify({ rules: [] }),
+            value: JSON.stringify({ rules: [], standaloneDiscounts: [] }),
           },
         ],
       },
@@ -145,6 +146,7 @@ async function findOrCreateBundleDiscount(admin) {
     id,
     title: TITLE,
     status: payload?.automaticAppDiscount?.status || "",
+    config: { rules: [], standaloneDiscounts: [] },
   };
 }
 
@@ -447,7 +449,15 @@ async function buildBundleConfigFromUpsells({ shop, admin }) {
 
 export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
   const discount = await findOrCreateBundleDiscount(admin);
-  const cleanConfig = await buildBundleConfigFromUpsells({ shop, admin });
+  const upsellConfig = await buildBundleConfigFromUpsells({ shop, admin });
+
+  const cleanConfig = {
+    ...discount.config,
+    ...upsellConfig,
+    standaloneDiscounts: Array.isArray(discount.config?.standaloneDiscounts)
+      ? discount.config.standaloneDiscounts
+      : [],
+  };
 
   const updateRes = await admin.graphql(UPDATE_MUTATION, {
     variables: {
