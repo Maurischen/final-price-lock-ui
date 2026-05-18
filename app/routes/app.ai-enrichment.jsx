@@ -15,7 +15,7 @@ import {
   Divider,
 } from "@shopify/polaris";
 
-import { authenticate } from "../../shopify.server";
+import { authenticate } from "../shopify.server";
 
 import {
   fetchProductsForAiEnrichment,
@@ -24,7 +24,7 @@ import {
   writeAiMetafields,
   getExistingAiMetafields,
   hasExistingAiMetafields,
-} from "../../services/ai-product-enrichment.server";
+} from "../services/ai-product-enrichment.server";
 
 export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
