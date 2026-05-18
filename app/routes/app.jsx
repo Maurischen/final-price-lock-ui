@@ -30,6 +30,7 @@ export default function App() {
           <s-link href="/app/upsells">Upsell Rules</s-link>
           <s-link href="/app/promo-display">Promo Display</s-link>
           <s-link href="/app/stock-sync">Stock Availability Sync</s-link>
+          <s-link href="/app/ai-enrichment">AI Product Enrichment</s-link>
           <s-link href="/app/products-audit">Products Audit</s-link>
           <s-link href="/app/zero-price-audit">Zero Price Audit</s-link>
           <s-link href="/app/locations">Locations</s-link>
