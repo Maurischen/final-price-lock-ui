@@ -7,7 +7,6 @@ import {
   Button,
   BlockStack,
   InlineStack,
-  Checkbox,
   TextField,
   Banner,
   DataTable,
@@ -25,6 +24,11 @@ import {
   getExistingAiMetafields,
   hasExistingAiMetafields,
 } from "../services/ai-product-enrichment.server";
+
+export async function loader({ request }) {
+  await authenticate.admin(request);
+  return null;
+}
 
 export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
@@ -44,7 +48,6 @@ export async function action({ request }) {
   });
 
   const products = productsResult.nodes || [];
-
   const results = [];
 
   for (const product of products) {
@@ -60,6 +63,7 @@ export async function action({ request }) {
           message: "AI metafields already exist.",
           generated: existingAiData,
           written: 0,
+          userErrors: [],
         });
 
         continue;
@@ -90,7 +94,7 @@ export async function action({ request }) {
           : `${writeResult.written} metafields written.`,
         generated,
         written: writeResult.written,
-        userErrors: writeResult.userErrors,
+        userErrors: writeResult.userErrors || [],
       });
     } catch (error) {
       results.push({
@@ -100,6 +104,7 @@ export async function action({ request }) {
         message: error.message,
         generated: {},
         written: 0,
+        userErrors: [],
       });
     }
   }
@@ -130,7 +135,9 @@ export default function AiEnrichmentPage() {
             ? "critical"
             : item.status === "Skipped"
               ? "attention"
-              : "success"
+              : item.status === "Preview"
+                ? "info"
+                : "success"
         }
       >
         {item.status}
@@ -149,11 +156,13 @@ export default function AiEnrichmentPage() {
               </Text>
 
               <Text as="p" tone="subdued">
-                This tool reads product data, generates structured AI metafield values, and writes them to Shopify as custom.ai_* metafields.
+                This tool reads product data, generates structured AI metafield
+                values, and writes them to Shopify as custom.ai_* metafields.
               </Text>
 
               <Banner tone="info">
-                Dry run is enabled by default. Test with 5 products first before writing live data.
+                Dry run is enabled by default. Test with 5 products first before
+                writing live data.
               </Banner>
 
               <Form method="post">
@@ -166,6 +175,7 @@ export default function AiEnrichmentPage() {
                     min={1}
                     max={25}
                     helpText="Start small. Maximum 25 per run for safety."
+                    autoComplete="off"
                   />
 
                   <input type="hidden" name="dryRun" value="true" />
@@ -194,7 +204,8 @@ export default function AiEnrichmentPage() {
                   </Button>
 
                   <Text as="p" tone="subdued">
-                    This writes only blank/missing AI metafields and skips products that already have AI data.
+                    This writes only blank or missing AI metafields and skips
+                    products that already have AI data.
                   </Text>
                 </BlockStack>
               </Form>
@@ -217,7 +228,7 @@ export default function AiEnrichmentPage() {
                 />
 
                 {actionData.results.map((item, index) => (
-                  <Card key={`${item.sku}-${index}`} background="bg-surface-secondary">
+                  <Card key={`${item.sku || item.title}-${index}`} background="bg-surface-secondary">
                     <BlockStack gap="300">
                       <InlineStack align="space-between">
                         <Text as="h3" variant="headingSm">
