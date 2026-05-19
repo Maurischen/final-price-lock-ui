@@ -30,7 +30,8 @@ export async function action({ request }) {
 
     const formData = await request.formData();
     const limit = Number(formData.get("limit") || 1);
-    const dryRun = formData.get("dryRun") === "true";
+    const intent = formData.get("intent");
+    const dryRun = intent !== "write";
     const safeLimit = Math.min(Math.max(limit, 1), 5);
 
     const response = await admin.graphql(`
@@ -166,12 +167,11 @@ export default function AiEnrichmentPage() {
 
               <Form method="post">
                 <BlockStack gap="400">
-                  <input type="hidden" name="dryRun" value="true" />
-
                   <label>
                     <Text as="span" variant="bodyMd">
-                      Number of products to preview
+                      Number of products to process
                     </Text>
+
                     <input
                       name="limit"
                       type="number"
@@ -189,24 +189,13 @@ export default function AiEnrichmentPage() {
                     />
                   </label>
 
-                  <Button submit loading={isSubmitting} variant="primary">
+                  <Button submit name="intent" value="preview" loading={isSubmitting} variant="primary">
                     Generate Preview
                   </Button>
-                </BlockStack>
-              </Form>
 
-              <Form method="post">
-                <BlockStack gap="400">
-                  <input type="hidden" name="dryRun" value="false" />
-                  <input type="hidden" name="limit" value="1" />
-
-                  <Button submit loading={isSubmitting} tone="success">
-                    Write 1 Product to Shopify Metafields
+                  <Button submit name="intent" value="write" loading={isSubmitting} tone="success">
+                    Write to Shopify Metafields
                   </Button>
-
-                  <Text as="p" tone="subdued">
-                    This writes only blank or missing custom.ai_* metafields. Existing AI fields are skipped.
-                  </Text>
                 </BlockStack>
               </Form>
             </BlockStack>
