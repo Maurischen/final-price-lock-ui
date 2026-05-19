@@ -1,4 +1,3 @@
-import { generateAiProductMetafields } from "../services/ai-product-enrichment.server";
 import { Form, useActionData, useNavigation } from "react-router";
 import {
   Page,
@@ -8,9 +7,11 @@ import {
   Button,
   BlockStack,
   Banner,
+  Badge,
 } from "@shopify/polaris";
 
 import { authenticate } from "../shopify.server";
+import { generateAiProductMetafields } from "../services/ai-product-enrichment.server";
 
 export async function loader({ request }) {
   await authenticate.admin(request);
@@ -20,59 +21,82 @@ export async function loader({ request }) {
 export async function action({ request }) {
   console.log("AI ENRICHMENT ACTION FIRED");
 
+  try {
     const { admin } = await authenticate.admin(request);
 
-  const formData = await request.formData();
-  const limit = Number(formData.get("limit") || 5);
+    const formData = await request.formData();
+    const limit = Number(formData.get("limit") || 1);
+    const safeLimit = Math.min(Math.max(limit, 1), 5);
 
-  const response = await admin.graphql(`
-    query {
-      products(first: ${limit}) {
-        nodes {
-          id
-          title
-          vendor
-          productType
-          descriptionHtml
-          tags
-          handle
-          selectedOrFirstAvailableVariant {
-            sku
+    const response = await admin.graphql(`
+      query {
+        products(first: ${safeLimit}, query: "status:active") {
+          nodes {
+            id
+            title
+            vendor
+            productType
+            descriptionHtml
+            tags
+            handle
+            selectedOrFirstAvailableVariant {
+              sku
+              barcode
+            }
           }
         }
       }
+    `);
+
+    const json = await response.json();
+
+    if (json.errors) {
+      throw new Error(JSON.stringify(json.errors));
     }
-  `);
 
-  const json = await response.json();
+    const products = json.data.products.nodes || [];
+    const enriched = [];
 
-  const products = json.data.products.nodes;
+    for (const product of products) {
+      try {
+        const aiData = await generateAiProductMetafields(product);
 
-  const enriched = [];
+        enriched.push({
+          title: product.title,
+          handle: product.handle,
+          sku: product.selectedOrFirstAvailableVariant?.sku || "",
+          status: "Success",
+          aiData,
+          error: null,
+        });
+      } catch (error) {
+        console.error("AI PRODUCT ERROR:", product.title, error);
 
-  for (const product of products) {
-    try {
-      const aiData = await generateAiProductMetafields(product);
-
-      enriched.push({
-        title: product.title,
-        handle: product.handle,
-        aiData,
-      });
-    } catch (error) {
-      enriched.push({
-        title: product.title,
-        handle: product.handle,
-        error: error.message,
-      });
+        enriched.push({
+          title: product.title,
+          handle: product.handle,
+          sku: product.selectedOrFirstAvailableVariant?.sku || "",
+          status: "Error",
+          aiData: null,
+          error: error.message,
+        });
+      }
     }
+
+    return {
+      ok: true,
+      message: `Processed ${products.length} product(s).`,
+      enriched,
+    };
+  } catch (error) {
+    console.error("AI ENRICHMENT ACTION ERROR:", error);
+
+    return {
+      ok: false,
+      message: error.message || "Unknown server error.",
+      enriched: [],
+    };
   }
-
-  return {
-    ok: true,
-    message: `Processed ${products.length} products.`,
-    enriched,
-  };
 }
 
 export default function AiEnrichmentPage() {
@@ -91,41 +115,15 @@ export default function AiEnrichmentPage() {
               </Text>
 
               <Text as="p" tone="subdued">
-                This confirms the route and form action are working.
+                This test fetches active Shopify products, sends them to OpenAI,
+                and previews the generated custom.ai_* metafield data. Nothing is
+                written to Shopify yet.
               </Text>
 
-              {actionData?.ok && (
-                <Banner tone="success">{actionData.message}</Banner>
-              )}
-            
-              {actionData?.enriched?.length > 0 && (
-                <div style={{ marginTop: "20px" }}>
-                  {actionData.enriched.map((item, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        padding: "15px",
-                        border: "1px solid #ddd",
-                        borderRadius: "8px",
-                        marginBottom: "15px",
-                        background: "#f9f9f9",
-                      }}
-                    >
-                      <strong>{item.title}</strong>
-
-                      <pre
-                        style={{
-                          marginTop: "10px",
-                          whiteSpace: "pre-wrap",
-                          overflowX: "auto",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {JSON.stringify(item.aiData || item.error, null, 2)}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
+              {actionData && (
+                <Banner tone={actionData.ok ? "success" : "critical"}>
+                  {actionData.message}
+                </Banner>
               )}
 
               <Form method="post">
@@ -138,9 +136,9 @@ export default function AiEnrichmentPage() {
                     <input
                       name="limit"
                       type="number"
-                      defaultValue="5"
+                      defaultValue="1"
                       min="1"
-                      max="25"
+                      max="5"
                       style={{
                         display: "block",
                         width: "100%",
@@ -153,13 +151,60 @@ export default function AiEnrichmentPage() {
                   </label>
 
                   <Button submit loading={isSubmitting} variant="primary">
-                    Test Route
+                    Generate Preview
                   </Button>
                 </BlockStack>
               </Form>
             </BlockStack>
           </Card>
         </Layout.Section>
+
+        {actionData?.enriched?.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  AI Preview Results
+                </Text>
+
+                {actionData.enriched.map((item, index) => (
+                  <Card key={`${item.sku || item.handle}-${index}`} background="bg-surface-secondary">
+                    <BlockStack gap="300">
+                      <div>
+                        <Text as="h3" variant="headingSm">
+                          {item.title}
+                        </Text>
+
+                        <div style={{ marginTop: "6px" }}>
+                          <Badge tone={item.status === "Error" ? "critical" : "success"}>
+                            {item.status}
+                          </Badge>
+                        </div>
+
+                        <Text as="p" tone="subdued">
+                          SKU: {item.sku || "No SKU"} | Handle: {item.handle}
+                        </Text>
+                      </div>
+
+                      <pre
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          overflowX: "auto",
+                          fontSize: "12px",
+                          padding: "12px",
+                          background: "#f6f6f7",
+                          borderRadius: "8px",
+                        }}
+                      >
+                        {JSON.stringify(item.aiData || item.error, null, 2)}
+                      </pre>
+                    </BlockStack>
+                  </Card>
+                ))}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
       </Layout>
     </Page>
   );
