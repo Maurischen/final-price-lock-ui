@@ -18,7 +18,9 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  console.log("AI ENRICHMENT ACTION FIRED");
+
+    const { admin } = await authenticate.admin(request);
 
   const formData = await request.formData();
   const limit = Number(formData.get("limit") || 5);
