@@ -11,7 +11,11 @@ import {
 } from "@shopify/polaris";
 
 import { authenticate } from "../shopify.server";
-import { generateAiProductMetafields } from "../services/ai-product-enrichment.server";
+import {
+  generateAiProductMetafields,
+  buildAiMetafieldsForShopify,
+  writeAiMetafields,
+} from "../services/ai-product-enrichment.server";
 
 export async function loader({ request }) {
   await authenticate.admin(request);
@@ -19,37 +23,44 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  console.log("AI ENRICHMENT ACTION FIRED");
+  console.log("AI ENRICHMENT WRITE ACTION FIRED");
 
   try {
     const { admin } = await authenticate.admin(request);
 
     const formData = await request.formData();
     const limit = Number(formData.get("limit") || 1);
+    const dryRun = formData.get("dryRun") === "true";
     const safeLimit = Math.min(Math.max(limit, 1), 5);
 
-   const response = await admin.graphql(`
-  query {
-    products(first: ${safeLimit}, query: "status:active") {
-      nodes {
-        id
-        title
-        vendor
-        productType
-        descriptionHtml
-        tags
-        handle
-
-        variants(first: 1) {
+    const response = await admin.graphql(`
+      query {
+        products(first: ${safeLimit}, query: "status:active") {
           nodes {
-            sku
-            barcode
+            id
+            title
+            vendor
+            productType
+            descriptionHtml
+            tags
+            handle
+            variants(first: 1) {
+              nodes {
+                sku
+                barcode
+              }
+            }
+            metafields(first: 20, namespace: "custom") {
+              nodes {
+                namespace
+                key
+                value
+              }
+            }
           }
         }
       }
-    }
-  }
-`);
+    `);
 
     const json = await response.json();
 
@@ -62,25 +73,49 @@ export async function action({ request }) {
 
     for (const product of products) {
       try {
+        const existingAiData = Object.fromEntries(
+          (product.metafields?.nodes || [])
+            .filter((field) => field.key?.startsWith("ai_"))
+            .map((field) => [field.key.replace(/^ai_/, ""), field.value])
+        );
+
         const aiData = await generateAiProductMetafields(product);
+
+        const metafieldsToWrite = buildAiMetafieldsForShopify(product.id, aiData, {
+          overwrite: false,
+          existingAiData,
+        });
+
+        let writeResult = {
+          written: 0,
+          userErrors: [],
+        };
+
+        if (!dryRun && metafieldsToWrite.length > 0) {
+          writeResult = await writeAiMetafields(admin, metafieldsToWrite);
+        }
 
         enriched.push({
           title: product.title,
           handle: product.handle,
           sku: product.variants?.nodes?.[0]?.sku || "",
-          status: "Success",
+          status: writeResult.userErrors?.length ? "Error" : dryRun ? "Preview" : "Written",
           aiData,
+          metafieldsReady: metafieldsToWrite.length,
+          written: writeResult.written,
+          userErrors: writeResult.userErrors,
           error: null,
         });
       } catch (error) {
-        console.error("AI PRODUCT ERROR:", product.title, error);
-
         enriched.push({
           title: product.title,
           handle: product.handle,
           sku: product.variants?.nodes?.[0]?.sku || "",
           status: "Error",
           aiData: null,
+          metafieldsReady: 0,
+          written: 0,
+          userErrors: [],
           error: error.message,
         });
       }
@@ -88,11 +123,13 @@ export async function action({ request }) {
 
     return {
       ok: true,
-      message: `Processed ${products.length} product(s).`,
+      message: dryRun
+        ? `Previewed ${products.length} product(s). Nothing was written.`
+        : `Processed ${products.length} product(s).`,
       enriched,
     };
   } catch (error) {
-    console.error("AI ENRICHMENT ACTION ERROR:", error);
+    console.error("AI ENRICHMENT WRITE ERROR:", error);
 
     return {
       ok: false,
@@ -114,13 +151,11 @@ export default function AiEnrichmentPage() {
           <Card>
             <BlockStack gap="400">
               <Text as="h2" variant="headingMd">
-                AI Product Enrichment Test
+                AI Product Enrichment
               </Text>
 
               <Text as="p" tone="subdued">
-                This test fetches active Shopify products, sends them to OpenAI,
-                and previews the generated custom.ai_* metafield data. Nothing is
-                written to Shopify yet.
+                Generate and write custom.ai_* metafields for active Shopify products.
               </Text>
 
               {actionData && (
@@ -131,11 +166,12 @@ export default function AiEnrichmentPage() {
 
               <Form method="post">
                 <BlockStack gap="400">
+                  <input type="hidden" name="dryRun" value="true" />
+
                   <label>
                     <Text as="span" variant="bodyMd">
-                      Number of products to process
+                      Number of products to preview
                     </Text>
-
                     <input
                       name="limit"
                       type="number"
@@ -158,6 +194,21 @@ export default function AiEnrichmentPage() {
                   </Button>
                 </BlockStack>
               </Form>
+
+              <Form method="post">
+                <BlockStack gap="400">
+                  <input type="hidden" name="dryRun" value="false" />
+                  <input type="hidden" name="limit" value="1" />
+
+                  <Button submit loading={isSubmitting} tone="success">
+                    Write 1 Product to Shopify Metafields
+                  </Button>
+
+                  <Text as="p" tone="subdued">
+                    This writes only blank or missing custom.ai_* metafields. Existing AI fields are skipped.
+                  </Text>
+                </BlockStack>
+              </Form>
             </BlockStack>
           </Card>
         </Layout.Section>
@@ -167,7 +218,7 @@ export default function AiEnrichmentPage() {
             <Card>
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">
-                  AI Preview Results
+                  Results
                 </Text>
 
                 {actionData.enriched.map((item, index) => (
@@ -179,13 +230,21 @@ export default function AiEnrichmentPage() {
                         </Text>
 
                         <div style={{ marginTop: "6px" }}>
-                          <Badge tone={item.status === "Error" ? "critical" : "success"}>
+                          <Badge
+                            tone={
+                              item.status === "Error"
+                                ? "critical"
+                                : item.status === "Preview"
+                                  ? "info"
+                                  : "success"
+                            }
+                          >
                             {item.status}
                           </Badge>
                         </div>
 
                         <Text as="p" tone="subdued">
-                          SKU: {item.sku || "No SKU"} | Handle: {item.handle}
+                          SKU: {item.sku || "No SKU"} | Ready: {item.metafieldsReady} | Written: {item.written}
                         </Text>
                       </div>
 
@@ -199,7 +258,7 @@ export default function AiEnrichmentPage() {
                           borderRadius: "8px",
                         }}
                       >
-                        {JSON.stringify(item.aiData || item.error, null, 2)}
+                        {JSON.stringify(item.aiData || item.error || item.userErrors, null, 2)}
                       </pre>
                     </BlockStack>
                   </Card>
