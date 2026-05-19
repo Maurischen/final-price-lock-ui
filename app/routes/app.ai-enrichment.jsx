@@ -6,7 +6,6 @@ import {
   Text,
   Button,
   BlockStack,
-  TextField,
   Banner,
 } from "@shopify/polaris";
 
@@ -45,7 +44,7 @@ export default function AiEnrichmentPage() {
               </Text>
 
               <Text as="p" tone="subdued">
-                This is a safe test page to confirm the route is wired correctly.
+                This confirms the route and form action are working.
               </Text>
 
               {actionData?.ok && (
@@ -54,15 +53,27 @@ export default function AiEnrichmentPage() {
 
               <Form method="post">
                 <BlockStack gap="400">
-                  <TextField
-                    label="Number of products to process"
-                    name="limit"
-                    type="number"
-                    defaultValue="5"
-                    min={1}
-                    max={25}
-                    autoComplete="off"
-                  />
+                  <label>
+                    <Text as="span" variant="bodyMd">
+                      Number of products to process
+                    </Text>
+
+                    <input
+                      name="limit"
+                      type="number"
+                      defaultValue="5"
+                      min="1"
+                      max="25"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        marginTop: "8px",
+                        padding: "10px",
+                        border: "1px solid #c9cccf",
+                        borderRadius: "6px",
+                      }}
+                    />
+                  </label>
 
                   <Button submit loading={isSubmitting} variant="primary">
                     Test Route
