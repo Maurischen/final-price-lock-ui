@@ -1,3 +1,4 @@
+import { generateAiProductMetafields } from "../services/ai-product-enrichment.server";
 import { Form, useActionData, useNavigation } from "react-router";
 import {
   Page,
@@ -28,7 +29,14 @@ export async function action({ request }) {
         nodes {
           id
           title
+          vendor
+          productType
+          descriptionHtml
+          tags
           handle
+          selectedOrFirstAvailableVariant {
+            sku
+          }
         }
       }
     }
@@ -36,10 +44,32 @@ export async function action({ request }) {
 
   const json = await response.json();
 
-   return {
+  const products = json.data.products.nodes;
+
+  const enriched = [];
+
+  for (const product of products) {
+    try {
+      const aiData = await generateAiProductMetafields(product);
+
+      enriched.push({
+        title: product.title,
+        handle: product.handle,
+        aiData,
+      });
+    } catch (error) {
+      enriched.push({
+        title: product.title,
+        handle: product.handle,
+        error: error.message,
+      });
+    }
+  }
+
+  return {
     ok: true,
-    message: `Fetched ${json.data.products.nodes.length} products.`,
-    products: json.data.products.nodes,
+    message: `Processed ${products.length} products.`,
+    enriched,
   };
 }
 
@@ -65,22 +95,32 @@ export default function AiEnrichmentPage() {
               {actionData?.ok && (
                 <Banner tone="success">{actionData.message}</Banner>
               )}
-
-              {actionData?.products?.length > 0 && (
+            
+              {actionData?.enriched?.length > 0 && (
                 <div style={{ marginTop: "20px" }}>
-                  {actionData.products.map((product) => (
+                  {actionData.enriched.map((item, index) => (
                     <div
-                      key={product.id}
+                      key={index}
                       style={{
-                        padding: "10px",
+                        padding: "15px",
                         border: "1px solid #ddd",
-                        borderRadius: "6px",
-                        marginBottom: "10px",
+                        borderRadius: "8px",
+                        marginBottom: "15px",
+                        background: "#f9f9f9",
                       }}
                     >
-                      <strong>{product.title}</strong>
-                      <br />
-                      {product.handle}
+                      <strong>{item.title}</strong>
+
+                      <pre
+                        style={{
+                          marginTop: "10px",
+                          whiteSpace: "pre-wrap",
+                          overflowX: "auto",
+                          fontSize: "12px",
+                        }}
+                      >
+                        {JSON.stringify(item.aiData || item.error, null, 2)}
+                      </pre>
                     </div>
                   ))}
                 </div>
