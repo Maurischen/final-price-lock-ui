@@ -28,25 +28,28 @@ export async function action({ request }) {
     const limit = Number(formData.get("limit") || 1);
     const safeLimit = Math.min(Math.max(limit, 1), 5);
 
-    const response = await admin.graphql(`
-      query {
-        products(first: ${safeLimit}, query: "status:active") {
+   const response = await admin.graphql(`
+  query {
+    products(first: ${safeLimit}, query: "status:active") {
+      nodes {
+        id
+        title
+        vendor
+        productType
+        descriptionHtml
+        tags
+        handle
+
+        variants(first: 1) {
           nodes {
-            id
-            title
-            vendor
-            productType
-            descriptionHtml
-            tags
-            handle
-            selectedOrFirstAvailableVariant {
-              sku
-              barcode
-            }
+            sku
+            barcode
           }
         }
       }
-    `);
+    }
+  }
+`);
 
     const json = await response.json();
 
@@ -64,7 +67,7 @@ export async function action({ request }) {
         enriched.push({
           title: product.title,
           handle: product.handle,
-          sku: product.selectedOrFirstAvailableVariant?.sku || "",
+          sku: product.variants?.nodes?.[0]?.sku || "",
           status: "Success",
           aiData,
           error: null,
@@ -75,7 +78,7 @@ export async function action({ request }) {
         enriched.push({
           title: product.title,
           handle: product.handle,
-          sku: product.selectedOrFirstAvailableVariant?.sku || "",
+          sku: product.variants?.nodes?.[0]?.sku || "",
           status: "Error",
           aiData: null,
           error: error.message,
