@@ -189,13 +189,41 @@ export default function AiEnrichmentPage() {
                     />
                   </label>
 
-                  <Button submit name="intent" value="preview" loading={isSubmitting} variant="primary">
-                    Generate Preview
-                  </Button>
+                  <button
+                    type="submit"
+                    name="intent"
+                    value="preview"
+                    disabled={isSubmitting}
+                    style={{
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: "1px solid #1f1f1f",
+                      background: "#303030",
+                      color: "white",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isSubmitting ? "Working..." : "Generate Preview"}
+                  </button>
 
-                  <Button submit name="intent" value="write" loading={isSubmitting} tone="success">
-                    Write to Shopify Metafields
-                  </Button>
+                  <button
+                    type="submit"
+                    name="intent"
+                    value="write"
+                    disabled={isSubmitting}
+                    style={{
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: "1px solid #008060",
+                      background: "#008060",
+                      color: "white",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isSubmitting ? "Working..." : "Write to Shopify Metafields"}
+                  </button>
                 </BlockStack>
               </Form>
             </BlockStack>
