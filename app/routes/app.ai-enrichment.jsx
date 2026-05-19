@@ -17,14 +17,29 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   const formData = await request.formData();
-  const limit = formData.get("limit") || "5";
+  const limit = Number(formData.get("limit") || 5);
 
-  return {
+  const response = await admin.graphql(`
+    query {
+      products(first: ${limit}) {
+        nodes {
+          id
+          title
+          handle
+        }
+      }
+    }
+  `);
+
+  const json = await response.json();
+
+   return {
     ok: true,
-    message: `Test successful. Limit received: ${limit}`,
+    message: `Fetched ${json.data.products.nodes.length} products.`,
+    products: json.data.products.nodes,
   };
 }
 
@@ -49,6 +64,26 @@ export default function AiEnrichmentPage() {
 
               {actionData?.ok && (
                 <Banner tone="success">{actionData.message}</Banner>
+              )}
+
+              {actionData?.products?.length > 0 && (
+                <div style={{ marginTop: "20px" }}>
+                  {actionData.products.map((product) => (
+                    <div
+                      key={product.id}
+                      style={{
+                        padding: "10px",
+                        border: "1px solid #ddd",
+                        borderRadius: "6px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <strong>{product.title}</strong>
+                      <br />
+                      {product.handle}
+                    </div>
+                  ))}
+                </div>
               )}
 
               <Form method="post">
