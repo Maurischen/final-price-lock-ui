@@ -9,6 +9,7 @@ export const AI_METAFIELD_KEYS = [
   "semantic_category",
   "installation_type",
   "environment",
+  "related_devices",
 ];
 
 const PRODUCT_QUERY = `#graphql
@@ -187,7 +188,7 @@ ${AI_METAFIELD_KEYS.join(", ")}
 }
 
 export function buildAiMetafieldsForShopify(productId, aiData, {
-  overwrite = false,
+  overwrite = true,
   existingAiData = {},
 } = {}) {
   return Object.entries(aiData)

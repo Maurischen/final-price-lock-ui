@@ -247,7 +247,15 @@ export default function AiEnrichmentPage() {
                           borderRadius: "8px",
                         }}
                       >
-                        {JSON.stringify(item.aiData || item.error || item.userErrors, null, 2)}
+                        {JSON.stringify(
+                          {
+                            aiData: item.aiData,
+                            userErrors: item.userErrors,
+                            error: item.error,
+                          },
+                          null,
+                          2
+                        )}
                       </pre>
                     </BlockStack>
                   </Card>
