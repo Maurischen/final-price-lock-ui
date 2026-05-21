@@ -140,6 +140,8 @@ model UpsellRule {
   name                  String
   type                  UpsellRuleType
   placement             UpsellPlacement
+  badgeText    String? @default("BUNDLE & SAVE")
+  headlineText String? @default("Bundle these essentials and save instantly")
   triggerMode           UpsellTriggerMode
   triggerSetupMode      String   @default("SINGLE") // SINGLE | ADVANCED
   

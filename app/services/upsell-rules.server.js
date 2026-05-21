@@ -50,6 +50,8 @@ export function normalizeUpsellRuleInput(input = {}) {
     name: emptyToNull(input.name),
     type: emptyToNull(input.type),
     placement: emptyToNull(input.placement),
+    badgeText: emptyToNull(input.badgeText) || "BUNDLE & SAVE",
+    headlineText: emptyToNull(input.headlineText) || "Bundle these essentials and save instantly",
     triggerMode: emptyToNull(input.triggerMode),
 
     triggerProductId: emptyToNull(input.triggerProductId),
@@ -236,6 +238,8 @@ export async function createUpsellRule(shop, rawInput) {
       name: normalized.name,
       type: normalized.type,
       placement: normalized.placement,
+      badgeText: normalized.badgeText,
+      headlineText: normalized.headlineText,
       triggerMode: normalized.triggerMode,
 
       triggerProductId: normalized.triggerProductId,
@@ -297,6 +301,8 @@ export async function updateUpsellRule(id, shop, rawInput) {
       name: normalized.name,
       type: normalized.type,
       placement: normalized.placement,
+      badgeText: normalized.badgeText,
+      headlineText: normalized.headlineText,
       triggerMode: normalized.triggerMode,
 
       triggerProductId: normalized.triggerProductId,
@@ -384,6 +390,8 @@ export async function duplicateUpsellRule(id, shop) {
       name: `${existing.name} (Copy)`,
       type: existing.type,
       placement: existing.placement,
+      badgeText: existing.badgeText,
+      headlineText: existing.headlineText,
       triggerMode: existing.triggerMode,
 
       triggerProductId: existing.triggerProductId,

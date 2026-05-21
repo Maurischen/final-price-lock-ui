@@ -87,6 +87,8 @@ function createInitialFormState() {
     triggerSku: "",
     triggerTag: "",
     triggerCollectionId: "",
+    badgeText: "BUNDLE & SAVE",
+    headlineText: "Bundle these essentials and save instantly",
     triggerDiscountMode: "NONE",
     triggerDiscountValue: "",
     triggerDiscountLabel: "",
@@ -129,6 +131,9 @@ function mapRuleToFormState(rule) {
     triggerSku: rule.triggerSku || "",
     triggerTag: rule.triggerTag || "",
     triggerCollectionId: rule.triggerCollectionId || "",
+    badgeText: rule.badgeText || "BUNDLE & SAVE",
+    headlineText:
+    rule.headlineText || "Bundle these essentials and save instantly",
     triggerDiscountMode: rule.triggerDiscountMode || "NONE",
     triggerDiscountValue:
       rule.triggerDiscountValue != null ? String(rule.triggerDiscountValue) : "",
@@ -864,6 +869,22 @@ export default function UpsellsPage() {
                   onChange={(value) => setField("name", value)}
                   autoComplete="off"
                 />
+
+                <TextField
+                  label="Bundle badge text"
+                  value={formState.badgeText || ""}
+                  onChange={(value) => setField("badgeText", value)}
+                  autoComplete="off"
+                  placeholder="BUNDLE & SAVE"
+                />
+
+                <TextField
+                  label="Bundle headline text"
+                  value={formState.headlineText || ""}
+                  onChange={(value) => setField("headlineText", value)}
+                  autoComplete="off"
+                  placeholder="Bundle these essentials and save instantly"
+                /> 
 
                 <InlineStack gap="300" wrap>
                   <div style={{ minWidth: 220 }}>

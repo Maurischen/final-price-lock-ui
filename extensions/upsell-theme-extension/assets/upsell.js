@@ -419,6 +419,15 @@ async function initUpsellBlocks(root = document) {
         continue;
       }
 
+      const primaryRule = data.rules[0] || {};
+
+      const badgeText =
+        primaryRule.badgeText || "Bundle & save";
+
+      const headlineText =
+        primaryRule.headlineText ||
+        "Bundle these essentials and save instantly";
+
       const triggerProduct = buildTriggerProduct(block);
       const triggerInCart = isProductInCart(cart, triggerProduct);
 
@@ -476,8 +485,8 @@ async function initUpsellBlocks(root = document) {
         <div class="upsell-bundle upsell-bundle--premium">
           <div class="upsell-bundle__hero">
             <div>
-              <div class="upsell-bundle__eyebrow">Bundle & save</div>
-              <div class="upsell-bundle__headline">Bundle these essentials and save instantly</div>
+              <div class="upsell-bundle__eyebrow">${badgeText}</div>
+              <div class="upsell-bundle__headline">${headlineText}</div>
             </div>
           </div>
 

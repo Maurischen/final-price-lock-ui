@@ -158,6 +158,8 @@ export async function resolveUpsells({ shop, placement, context = {} }) {
         name: rule.name,
         type: rule.type,
         placement: rule.placement,
+        badgeText: rule.badgeText || "BUNDLE & SAVE",
+        headlineText:  rule.headlineText || "Bundle these essentials and save instantly",
         priority: rule.priority,
 
         triggerDiscount: {
