@@ -25,35 +25,6 @@ function toDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function normalizeArray(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean);
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
-function normalizeTriggerInput(trigger = {}, index = 0) {
-  return {
-    position: Number.isFinite(index) ? index : 0,
-    triggerType: emptyToNull(trigger.triggerType) || emptyToNull(trigger.type) || "SKU",
-    productId: emptyToNull(trigger.productId),
-    variantId: emptyToNull(trigger.variantId),
-    sku: emptyToNull(trigger.sku),
-    collectionId: emptyToNull(trigger.collectionId),
-    title: emptyToNull(trigger.title),
-    handle: emptyToNull(trigger.handle),
-  };
-}
-
 function normalizeOfferInput(offer = {}, index = 0) {
   return {
     position: Number.isFinite(index) ? index : 0,
@@ -75,10 +46,6 @@ export function normalizeUpsellRuleInput(input = {}) {
     ? input.offers.map((offer, index) => normalizeOfferInput(offer, index))
     : [];
 
-  const triggers = normalizeArray(input.triggers).map((trigger, index) =>
-    normalizeTriggerInput(trigger, index),
-  );
-
   return {
     name: emptyToNull(input.name),
     type: emptyToNull(input.type),
@@ -90,9 +57,6 @@ export function normalizeUpsellRuleInput(input = {}) {
     triggerSku: emptyToNull(input.triggerSku),
     triggerTag: emptyToNull(input.triggerTag),
     triggerCollectionId: emptyToNull(input.triggerCollectionId),
-
-    triggers,
-
     triggerDiscountMode: emptyToNull(input.triggerDiscountMode) || "NONE",
     triggerDiscountValue: toNumber(input.triggerDiscountValue),
     triggerDiscountLabel: emptyToNull(input.triggerDiscountLabel),
@@ -120,28 +84,25 @@ export function validateUpsellRuleInput(input = {}) {
   if (!input.type) errors.type = "Type is required.";
   if (!input.placement) errors.placement = "Placement is required.";
   if (!input.triggerMode) errors.triggerMode = "Trigger mode is required.";
-
   if (input.triggerDiscountMode && input.triggerDiscountMode !== "NONE") {
-    if (input.triggerDiscountValue == null || Number(input.triggerDiscountValue) <= 0) {
-      errors.triggerDiscountValue = "Trigger discount value must be greater than 0.";
-    }
+  if (input.triggerDiscountValue == null || Number(input.triggerDiscountValue) <= 0) {
+    errors.triggerDiscountValue = "Trigger discount value must be greater than 0.";
   }
-
-  const hasTriggers = Array.isArray(input.triggers) && input.triggers.length > 0;
+}
 
   switch (input.triggerMode) {
     case "PRODUCT":
-      if (!input.triggerProductId && !hasTriggers) {
+      if (!input.triggerProductId) {
         errors.triggerProductId = "Trigger product is required for PRODUCT mode.";
       }
       break;
     case "VARIANT":
-      if (!input.triggerVariantId && !hasTriggers) {
+      if (!input.triggerVariantId) {
         errors.triggerVariantId = "Trigger variant is required for VARIANT mode.";
       }
       break;
     case "SKU":
-      if (!input.triggerSku && !hasTriggers) {
+      if (!input.triggerSku) {
         errors.triggerSku = "Trigger SKU is required for SKU mode.";
       }
       break;
@@ -151,7 +112,7 @@ export function validateUpsellRuleInput(input = {}) {
       }
       break;
     case "COLLECTION":
-      if (!input.triggerCollectionId && !hasTriggers) {
+      if (!input.triggerCollectionId) {
         errors.triggerCollectionId =
           "Trigger collection ID is required for COLLECTION mode.";
       }
@@ -164,38 +125,6 @@ export function validateUpsellRuleInput(input = {}) {
     default:
       break;
   }
-
-  input.triggers.forEach((trigger, index) => {
-    switch (trigger.triggerType) {
-      case "PRODUCT":
-        if (!trigger.productId) {
-          errors[`triggers.${index}.productId`] =
-            `Trigger ${index + 1}: product ID is required.`;
-        }
-        break;
-      case "VARIANT":
-        if (!trigger.variantId) {
-          errors[`triggers.${index}.variantId`] =
-            `Trigger ${index + 1}: variant ID is required.`;
-        }
-        break;
-      case "SKU":
-        if (!trigger.sku) {
-          errors[`triggers.${index}.sku`] =
-            `Trigger ${index + 1}: SKU is required.`;
-        }
-        break;
-      case "COLLECTION":
-        if (!trigger.collectionId && !trigger.handle) {
-          errors[`triggers.${index}.collectionId`] =
-            `Trigger ${index + 1}: collection ID or handle is required.`;
-        }
-        break;
-      default:
-        errors[`triggers.${index}.triggerType`] =
-          `Trigger ${index + 1}: trigger type is required.`;
-    }
-  });
 
   if (input.startsAt && input.endsAt) {
     if (new Date(input.startsAt).getTime() > new Date(input.endsAt).getTime()) {
@@ -260,35 +189,18 @@ function buildOfferCreates(normalized) {
   }));
 }
 
-function buildTriggerCreates(normalized) {
-  return normalized.triggers.map((trigger, index) => ({
-    position: index,
-    triggerType: trigger.triggerType,
-    productId: trigger.productId,
-    variantId: trigger.variantId,
-    sku: trigger.sku,
-    collectionId: trigger.collectionId,
-    title: trigger.title,
-    handle: trigger.handle,
-  }));
-}
-
-function ruleInclude() {
-  return {
-    offerProducts: {
-      where: { isActive: true },
-      orderBy: { position: "asc" },
-    },
-    triggers: {
-      orderBy: { position: "asc" },
-    },
-  };
-}
-
 export async function listUpsellRules(shop) {
   return db.upsellRule.findMany({
     where: { shop },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+      triggers: {
+        orderBy: { position: "asc" },
+      },
+    },
     orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
   });
 }
@@ -298,7 +210,15 @@ export async function getUpsellRuleById(id, shop) {
 
   return db.upsellRule.findFirst({
     where: { id, shop },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+      triggers: {
+        orderBy: { position: "asc" },
+      },
+    },
   });
 }
 
@@ -309,8 +229,6 @@ export async function createUpsellRule(shop, rawInput) {
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
-
-  const triggerCreates = buildTriggerCreates(normalized);
 
   const rule = await db.upsellRule.create({
     data: {
@@ -341,19 +259,16 @@ export async function createUpsellRule(shop, rawInput) {
       startsAt: normalized.startsAt,
       endsAt: normalized.endsAt,
 
-      ...(triggerCreates.length > 0
-        ? {
-            triggers: {
-              create: triggerCreates,
-            },
-          }
-        : {}),
-
       offerProducts: {
         create: buildOfferCreates(normalized),
       },
     },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
   return { ok: true, rule };
@@ -375,8 +290,6 @@ export async function updateUpsellRule(id, shop, rawInput) {
   if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
-
-  const triggerCreates = buildTriggerCreates(normalized);
 
   const rule = await db.upsellRule.update({
     where: { id: existing.id },
@@ -407,17 +320,17 @@ export async function updateUpsellRule(id, shop, rawInput) {
       startsAt: normalized.startsAt,
       endsAt: normalized.endsAt,
 
-      triggers: {
-        deleteMany: {},
-        create: triggerCreates,
-      },
-
       offerProducts: {
         deleteMany: {},
         create: buildOfferCreates(normalized),
       },
     },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
   return { ok: true, rule };
@@ -447,7 +360,12 @@ export async function setUpsellRuleActive(id, shop, isActive) {
   const rule = await db.upsellRule.update({
     where: { id: existing.id },
     data: { isActive: Boolean(isActive) },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
   return { ok: true, rule };
@@ -489,19 +407,6 @@ export async function duplicateUpsellRule(id, shop) {
       startsAt: existing.startsAt,
       endsAt: existing.endsAt,
 
-      triggers: {
-        create: (existing.triggers || []).map((trigger, index) => ({
-          position: index,
-          triggerType: trigger.triggerType,
-          productId: trigger.productId,
-          variantId: trigger.variantId,
-          sku: trigger.sku,
-          collectionId: trigger.collectionId,
-          title: trigger.title,
-          handle: trigger.handle,
-        })),
-      },
-
       offerProducts: {
         create: (existing.offerProducts || []).map((offer, index) => ({
           position: index,
@@ -518,7 +423,12 @@ export async function duplicateUpsellRule(id, shop) {
         })),
       },
     },
-    include: ruleInclude(),
+    include: {
+      offerProducts: {
+        where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+    },
   });
 
   return { ok: true, rule: copy };
