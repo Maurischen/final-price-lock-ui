@@ -624,8 +624,8 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
     setConfig((prev) => ({
       ...prev,
       standaloneDiscounts: [
-        ...(prev.standaloneDiscounts || []),
         emptyStandaloneDiscount(),
+        ...(prev.standaloneDiscounts || []),
       ],
     }));
   }
@@ -948,6 +948,14 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                 </Button>
                 <Button onClick={addStandaloneDiscount}>
                   Add standalone discount
+                </Button>
+                <Button
+                  submit
+                  variant="primary"
+                  loading={isSubmitting}
+                  disabled={validationErrors.length > 0}
+                >
+                  Save rules
                 </Button>
               </InlineStack>
             </InlineStack>
