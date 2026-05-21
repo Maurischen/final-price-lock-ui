@@ -141,7 +141,8 @@ model UpsellRule {
   type                  UpsellRuleType
   placement             UpsellPlacement
   triggerMode           UpsellTriggerMode
-
+  triggerSetupMode      String   @default("SINGLE") // SINGLE | ADVANCED
+  
   triggerProductId      String?
   triggerVariantId      String?
   triggerSku            String?
