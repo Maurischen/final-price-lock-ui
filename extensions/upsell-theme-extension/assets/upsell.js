@@ -4,7 +4,7 @@ function moneyFormat(value) {
   const number = Number(value);
   if (Number.isNaN(number)) return value;
 
-  return `R ${number.toLocaleString("en-ZA", {
+  return `R ${number.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
