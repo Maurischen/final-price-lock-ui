@@ -148,9 +148,6 @@ model UpsellRule {
   triggerTag            String?
   triggerCollectionId   String?
 
-  triggerProductsJson    String?
-  triggerCollectionsJson String?
-  
   triggerDiscountMode   UpsellDiscountMode @default(NONE)
   triggerDiscountValue  Float?
   triggerDiscountLabel  String?
@@ -171,6 +168,7 @@ model UpsellRule {
   updatedAt             DateTime @updatedAt
 
   offerProducts         UpsellOfferProduct[]
+  triggers              UpsellTrigger[]
 
   @@index([shop])
   @@index([shop, isActive])
@@ -239,6 +237,30 @@ model PromoDisplayRule {
   @@index([source])
   @@index([variantId])
   @@unique([shop, source, sku])
+}
+
+model UpsellTrigger {
+  id           String   @id @default(cuid())
+  ruleId       String
+  position     Int      @default(0)
+
+  triggerType  String   // PRODUCT | VARIANT | SKU | COLLECTION
+  productId    String?
+  variantId    String?
+  sku          String?
+  collectionId String?
+  title        String?
+  handle       String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  rule         UpsellRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([triggerType])
+  @@index([sku])
+  @@index([collectionId])
 }
 
 enum UpsellRuleType {
