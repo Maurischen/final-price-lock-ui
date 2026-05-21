@@ -147,6 +147,10 @@ model UpsellRule {
   triggerSku            String?
   triggerTag            String?
   triggerCollectionId   String?
+
+  triggerProductsJson    String?
+  triggerCollectionsJson String?
+  
   triggerDiscountMode   UpsellDiscountMode @default(NONE)
   triggerDiscountValue  Float?
   triggerDiscountLabel  String?
