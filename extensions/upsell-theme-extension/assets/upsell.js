@@ -1,8 +1,13 @@
 function moneyFormat(value) {
   if (value == null || value === "") return "";
+
   const number = Number(value);
   if (Number.isNaN(number)) return value;
-  return `R ${number.toFixed(2)}`;
+
+  return `R ${number.toLocaleString("en-ZA", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function normalizeVariantId(variantId) {
