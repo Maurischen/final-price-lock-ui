@@ -25,6 +25,24 @@ function safeJsonArray(value) {
   }
 }
 
+function cleanSkuText(value) {
+  return [...new Set(
+    String(value || "")
+      .split(/[\n,]+/)
+      .map((sku) => sku.trim())
+      .filter(Boolean)
+  )]
+    .sort((a, b) => a.localeCompare(b))
+    .join("\n");
+}
+
+function countSkus(value) {
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((sku) => sku.trim())
+    .filter(Boolean).length;
+}
+
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
 
@@ -185,6 +203,15 @@ function CreateBundlerRuleForm({
                   placeholder={"LAPTOP-SKU-1\nLAPTOP-SKU-2\nLAPTOP-SKU-3"}
                 />
 
+                <InlineStack gap="200">
+                  <Button onClick={() => setTriggerSkus(cleanSkuText(triggerSkus))}>
+                    Clean / Sort Trigger SKUs
+                  </Button>
+                  <Text as="span" tone="subdued">
+                    {countSkus(triggerSkus)} trigger SKU(s)
+                  </Text>
+                </InlineStack>
+
                 <TextField
                   label="Offer SKUs"
                   name="offerSkus"
@@ -195,6 +222,15 @@ function CreateBundlerRuleForm({
                   helpText="Comma separated or one SKU per line. These products will show in the bundle."
                   placeholder={"BAG-001\nMOUSE-001\nT54"}
                 />
+
+                <InlineStack gap="200">
+                  <Button onClick={() => setOfferSkus(cleanSkuText(offerSkus))}>
+                    Clean / Sort Offer SKUs
+                  </Button>
+                  <Text as="span" tone="subdued">
+                    {countSkus(offerSkus)} offer SKU(s)
+                  </Text>
+                </InlineStack>
 
                 <TextField
                   label="Priority"
@@ -320,6 +356,15 @@ function EditBundlerRuleForm({
                   autoComplete="off"
                 />
 
+                <InlineStack gap="200">
+                  <Button onClick={() => setTriggerSkus(cleanSkuText(triggerSkus))}>
+                    Clean / Sort Trigger SKUs
+                  </Button>
+                  <Text as="span" tone="subdued">
+                    {countSkus(triggerSkus)} trigger SKU(s)
+                  </Text>
+                </InlineStack>
+
                 <TextField
                   label="Offer SKUs"
                   name="offerSkus"
@@ -328,6 +373,15 @@ function EditBundlerRuleForm({
                   multiline={4}
                   autoComplete="off"
                 />
+
+                <InlineStack gap="200">
+                  <Button onClick={() => setOfferSkus(cleanSkuText(offerSkus))}>
+                    Clean / Sort Offer SKUs
+                  </Button>
+                  <Text as="span" tone="subdued">
+                    {countSkus(offerSkus)} offer SKU(s)
+                  </Text>
+                </InlineStack>
 
                 <TextField
                   label="Priority"
