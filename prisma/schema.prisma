@@ -272,6 +272,8 @@ model BundlerRule {
   name            String
   triggerSkusJson String
   offerSkusJson   String
+  badgeText       String?  @default("Bundle & save")
+  headlineText    String?  @default("Bundle these essentials and save instantly")
   isActive        Boolean  @default(true)
   priority        Int      @default(100)
   createdAt       DateTime @default(now())
