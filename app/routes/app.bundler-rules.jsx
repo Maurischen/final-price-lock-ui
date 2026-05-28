@@ -60,6 +60,8 @@ export async function action({ request }) {
   const name = String(formData.get("name") || "").trim();
   const triggerSkus = parseSkuList(formData.get("triggerSkus"));
   const offerSkus = parseSkuList(formData.get("offerSkus"));
+  const badgeText = String(formData.get("badgeText") || "").trim();
+  const headlineText = String(formData.get("headlineText") || "").trim();
   const isActive = formData.get("isActive") === "true";
   const priority = Number(formData.get("priority") || 100);
 
@@ -77,6 +79,8 @@ export async function action({ request }) {
       name,
       triggerSkus,
       offerSkus,
+      badgeText,
+      headlineText,
       isActive,
       priority,
     });
@@ -89,6 +93,8 @@ export async function action({ request }) {
     name,
     triggerSkus,
     offerSkus,
+    badgeText,
+    headlineText,
     isActive,
     priority,
   });
@@ -100,6 +106,8 @@ function CreateBundlerRuleForm({ isSubmitting }) {
   const [name, setName] = useState("");
   const [triggerSkus, setTriggerSkus] = useState("");
   const [offerSkus, setOfferSkus] = useState("");
+  const [badgeText, setBadgeText] = useState("Bundle & save");
+  const [headlineText, setHeadlineText] = useState("Bundle these essentials and save instantly");
   const [priority, setPriority] = useState("100");
   const [isActive, setIsActive] = useState(true);
 
@@ -147,6 +155,22 @@ function CreateBundlerRuleForm({ isSubmitting }) {
             />
 
             <TextField
+              label="Bundle Badge Text"
+              name="badgeText"
+              value={badgeText}
+              onChange={setBadgeText}
+              autoComplete="off"
+            />
+
+            <TextField
+              label="Bundle Headline"
+              name="headlineText"
+              value={headlineText}
+              onChange={setHeadlineText}
+              autoComplete="off"
+            />
+
+            <TextField
               label="Priority"
               name="priority"
               type="number"
@@ -180,6 +204,8 @@ function EditBundlerRuleForm({ rule, isSubmitting }) {
   const [name, setName] = useState(rule.name || "");
   const [triggerSkus, setTriggerSkus] = useState(initialTriggerSkus);
   const [offerSkus, setOfferSkus] = useState(initialOfferSkus);
+  const [badgeText, setBadgeText] = useState(rule.badgeText || "Bundle & save");
+  const [headlineText, setHeadlineText] = useState(rule.headlineText || "Bundle these essentials and save instantly");
   const [priority, setPriority] = useState(String(rule.priority || 100));
   const [isActive, setIsActive] = useState(Boolean(rule.isActive));
 
@@ -232,6 +258,22 @@ function EditBundlerRuleForm({ rule, isSubmitting }) {
               value={offerSkus}
               onChange={setOfferSkus}
               multiline={4}
+              autoComplete="off"
+            />
+
+            <TextField
+              label="Bundle Badge Text"
+              name="badgeText"
+              value={badgeText}
+              onChange={setBadgeText}
+              autoComplete="off"
+            />
+
+            <TextField
+              label="Bundle Headline"
+              name="headlineText"
+              value={headlineText}
+              onChange={setHeadlineText}
               autoComplete="off"
             />
 
@@ -296,6 +338,8 @@ export default function BundlerRulesPage() {
                 key={rule.id}
                 rule={rule}
                 isSubmitting={isSubmitting}
+                badgeText={rule.badgeText}
+                headlineText={rule.headlineText}
               />
             ))}
           </BlockStack>
