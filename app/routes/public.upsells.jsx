@@ -1,3 +1,4 @@
+import { resolveBundlerOffers } from "../services/bundler-resolver.server";
 import { resolveUpsells } from "../services/upsell-resolver.server";
 import { authenticate } from "../shopify.server";
 
@@ -7,6 +8,7 @@ export async function loader({ request }) {
 
     const url = new URL(request.url);
     const sku = url.searchParams.get("sku");
+    const type = url.searchParams.get("type");
 
     if (!sku) {
       return Response.json(
@@ -16,6 +18,91 @@ export async function loader({ request }) {
     }
 
     // Get the current trigger product context, including collections
+    if (type === "bundler") {
+  const rules = await resolveBundlerOffers({
+    shop: session.shop,
+    sku,
+  });
+
+  const offerSkus = [
+    ...new Set(
+      (rules || [])
+        .flatMap((rule) => rule.offerSkus || [])
+        .filter(Boolean),
+    ),
+  ];
+
+  const productsBySku = {};
+
+  if (offerSkus.length > 0) {
+    const searchQuery = offerSkus.map((s) => `sku:${s}`).join(" OR ");
+
+    const response = await admin.graphql(
+      `#graphql
+      query BundlerProducts($query: String!) {
+        products(first: 20, query: $query) {
+          nodes {
+            id
+            title
+            handle
+            featuredImage {
+              url
+              altText
+            }
+            variants(first: 20) {
+              nodes {
+                id
+                sku
+                title
+                price
+                availableForSale
+              }
+            }
+          }
+        }
+      }`,
+      {
+        variables: { query: searchQuery },
+      },
+    );
+
+    const json = await response.json();
+    const nodes = json?.data?.products?.nodes || [];
+
+    for (const product of nodes) {
+      for (const variant of product.variants?.nodes || []) {
+        if (!variant?.sku) continue;
+
+        productsBySku[variant.sku] = {
+          id: product.id,
+          title: product.title,
+          handle: product.handle,
+          image: product.featuredImage?.url || null,
+          imageAlt: product.featuredImage?.altText || product.title,
+          variantId: variant.id,
+          variantTitle: variant.title,
+          sku: variant.sku,
+          price: variant.price,
+          availableForSale: variant.availableForSale ?? false,
+        };
+      }
+    }
+  }
+
+  const formattedRules = (rules || []).map((rule) => ({
+    ...rule,
+    offers: (rule.offerSkus || []).map((offerSku) => ({
+      sku: offerSku,
+      product: productsBySku[offerSku] || null,
+    })),
+  }));
+
+  return Response.json({
+    ok: true,
+    count: formattedRules.length,
+    rules: formattedRules,
+  });
+}
     const triggerResponse = await admin.graphql(
       `#graphql
       query TriggerProductBySku($query: String!) {
