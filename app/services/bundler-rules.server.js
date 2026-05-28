@@ -90,3 +90,24 @@ export async function getActiveBundlerRules(shop) {
     orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
   });
 }
+
+export async function duplicateBundlerRule({ id, shop }) {
+  const existing = await prisma.bundlerRule.findFirst({
+    where: { id, shop },
+  });
+
+  if (!existing) return null;
+
+  return prisma.bundlerRule.create({
+    data: {
+      shop,
+      name: `Copy of ${existing.name}`,
+      triggerSkusJson: existing.triggerSkusJson,
+      offerSkusJson: existing.offerSkusJson,
+      badgeText: existing.badgeText,
+      headlineText: existing.headlineText,
+      isActive: existing.isActive,
+      priority: existing.priority,
+    },
+  });
+}

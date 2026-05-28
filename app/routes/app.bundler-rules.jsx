@@ -52,6 +52,19 @@ export async function action({ request }) {
   const intent = formData.get("_intent");
   const id = formData.get("id");
 
+  if (intent === "duplicate") {
+  const { duplicateBundlerRule } = await import(
+    "../services/bundler-rules.server"
+  );
+
+  await duplicateBundlerRule({
+    id,
+    shop: session.shop,
+  });
+
+  return redirect("/app/bundler-rules");
+  }
+
   if (intent === "delete") {
     await deleteBundlerRule({ id, shop: session.shop });
     return redirect("/app/bundler-rules");
@@ -315,14 +328,25 @@ function EditBundlerRuleForm({
               </BlockStack>
             </Form>
 
-            <Form method="post">
-              <input type="hidden" name="_intent" value="delete" />
-              <input type="hidden" name="id" value={rule.id} />
+            <InlineStack gap="200">
+              <Form method="post">
+                <input type="hidden" name="_intent" value="duplicate" />
+                <input type="hidden" name="id" value={rule.id} />
 
-              <Button submit tone="critical" variant="secondary">
-                Delete
-              </Button>
-            </Form>
+                <Button submit variant="secondary">
+                  Duplicate
+                </Button>
+              </Form>
+
+              <Form method="post">
+                <input type="hidden" name="_intent" value="delete" />
+                <input type="hidden" name="id" value={rule.id} />
+
+                <Button submit tone="critical" variant="secondary">
+                  Delete
+                </Button>
+              </Form>
+            </InlineStack>
           </>
         )}
       </BlockStack>
