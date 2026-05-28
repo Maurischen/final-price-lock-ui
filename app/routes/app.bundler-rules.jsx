@@ -1,5 +1,4 @@
-import { json, redirect } from "@shopify/shopify-app-react-router/server";
-import { Form, useLoaderData, useNavigation } from "react-router";
+import { Form, redirect, useLoaderData, useNavigation } from "react-router";
 import {
   Page,
   Layout,
@@ -14,25 +13,39 @@ import {
   Badge,
 } from "@shopify/polaris";
 
-import { authenticate } from "../../shopify.server";
-import {
-  listBundlerRules,
-  createBundlerRule,
-  updateBundlerRule,
-  deleteBundlerRule,
-  parseSkuList,
-  safeJsonArray,
-} from "../../services/bundler-rules.server";
+import { authenticate } from "../shopify.server";
+
+function safeJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
+
+  const { listBundlerRules } = await import(
+    "../services/bundler-rules.server"
+  );
+
   const rules = await listBundlerRules(session.shop);
 
-  return json({ rules });
+  return { rules };
 }
 
 export async function action({ request }) {
   const { session } = await authenticate.admin(request);
+
+  const {
+    createBundlerRule,
+    updateBundlerRule,
+    deleteBundlerRule,
+    parseSkuList,
+  } = await import("../services/bundler-rules.server");
+
   const formData = await request.formData();
 
   const intent = formData.get("_intent");
@@ -54,13 +67,10 @@ export async function action({ request }) {
   const priority = Number(formData.get("priority") || 100);
 
   if (!name || triggerSkus.length === 0 || offerSkus.length === 0) {
-    return json(
-      {
-        error:
-          "Rule name, at least one trigger SKU, and at least one offer SKU are required.",
-      },
-      { status: 400 },
-    );
+    return {
+      error:
+        "Rule name, at least one trigger SKU, and at least one offer SKU are required.",
+    };
   }
 
   if (intent === "update") {
@@ -90,7 +100,7 @@ export async function action({ request }) {
 }
 
 export default function BundlerRulesPage() {
-  const { rules } = useLoaderData();
+  const { rules = [] } = useLoaderData();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
@@ -156,6 +166,12 @@ export default function BundlerRulesPage() {
 
         <Layout.Section>
           <BlockStack gap="400">
+            {rules.length === 0 && (
+              <Card>
+                <Text as="p">No bundler rules created yet.</Text>
+              </Card>
+            )}
+
             {rules.map((rule) => {
               const triggerSkus = safeJsonArray(rule.triggerSkusJson);
               const offerSkus = safeJsonArray(rule.offerSkusJson);
@@ -168,6 +184,7 @@ export default function BundlerRulesPage() {
                         <Text as="h3" variant="headingMd">
                           {rule.name}
                         </Text>
+
                         <InlineStack gap="200">
                           <Badge tone={rule.isActive ? "success" : "critical"}>
                             {rule.isActive ? "Active" : "Inactive"}
@@ -241,12 +258,6 @@ export default function BundlerRulesPage() {
                 </Card>
               );
             })}
-
-            {rules.length === 0 && (
-              <Card>
-                <Text as="p">No bundler rules created yet.</Text>
-              </Card>
-            )}
           </BlockStack>
         </Layout.Section>
       </Layout>
