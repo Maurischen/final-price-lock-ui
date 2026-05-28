@@ -37,10 +37,12 @@ export async function resolveBundlerOffers({
   });
 
   return matchingRules.map((rule) => ({
-    id: rule.id,
-    name: rule.name,
-    triggerSkus: safeJsonArray(rule.triggerSkusJson),
-    offerSkus: safeJsonArray(rule.offerSkusJson),
-    priority: rule.priority,
+  id: rule.id,
+  name: rule.name,
+  badgeText: rule.badgeText || "Bundle & save",
+  headlineText: rule.headlineText || "Bundle these essentials and save instantly",
+  triggerSkus: safeJsonArray(rule.triggerSkusJson),
+  offerSkus: safeJsonArray(rule.offerSkusJson),
+  priority: rule.priority,
   }));
 }
