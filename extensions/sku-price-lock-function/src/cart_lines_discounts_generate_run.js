@@ -86,7 +86,11 @@ function buildPercentageCandidate(lineId, quantity, percentage, message) {
 }
 
 function buildDiscountCandidate(lineId, quantity, discountConfig, message) {
-  const discountMode = discountConfig.discountMode || "FIXED";
+  const discountMode =
+  discountConfig.discountMode ||
+  discountConfig.mode ||
+  discountConfig.discountType ||
+  "FIXED";
 
   if (discountMode === "PERCENTAGE") {
     return buildPercentageCandidate(
@@ -397,7 +401,11 @@ function buildStandaloneDiscountCandidates(input) {
           line.id,
           lineQty,
           {
-            discountMode: discountRule.discountMode || "FIXED",
+            discountMode:
+              discountRule.discountMode ||
+              discountRule.mode ||
+              discountRule.discountType ||
+              "FIXED",
             discountAmount,
             discountValue: discountAmount,
             discountPercentage: discountRule.discountPercentage,

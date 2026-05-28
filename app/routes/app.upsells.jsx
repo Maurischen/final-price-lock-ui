@@ -25,6 +25,10 @@ import {
   setUpsellRuleActive,
   duplicateUpsellRule,
 } from "../services/upsell-rules.server";
+import {
+  listUpsellTriggers,
+  replaceUpsellTriggers,
+} from "../services/upsell-triggers.server";
 import { syncUpsellRulesToBundleDiscount } from "../services/upsell-discount-sync.server";
 
 const TYPE_OPTIONS = [
@@ -85,6 +89,7 @@ function createInitialFormState() {
     triggerProductId: "",
     triggerVariantId: "",
     triggerSku: "",
+    extraTriggerSkus: "",
     triggerTag: "",
     triggerCollectionId: "",
     badgeText: "BUNDLE & SAVE",
@@ -120,6 +125,15 @@ function toDatetimeLocal(value) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function getExtraTriggerSkusFromRule(rule) {
+  if (!Array.isArray(rule?.triggers)) return "";
+
+  return rule.triggers
+    .filter((trigger) => trigger?.triggerType === "SKU" && trigger?.sku)
+    .map((trigger) => trigger.sku)
+    .join(", ");
+}
+
 function mapRuleToFormState(rule) {
   return {
     name: rule.name || "",
@@ -129,11 +143,12 @@ function mapRuleToFormState(rule) {
     triggerProductId: rule.triggerProductId || "",
     triggerVariantId: rule.triggerVariantId || "",
     triggerSku: rule.triggerSku || "",
+    extraTriggerSkus: getExtraTriggerSkusFromRule(rule),
     triggerTag: rule.triggerTag || "",
     triggerCollectionId: rule.triggerCollectionId || "",
     badgeText: rule.badgeText || "BUNDLE & SAVE",
     headlineText:
-    rule.headlineText || "Bundle these essentials and save instantly",
+      rule.headlineText || "Bundle these essentials and save instantly",
     triggerDiscountMode: rule.triggerDiscountMode || "NONE",
     triggerDiscountValue:
       rule.triggerDiscountValue != null ? String(rule.triggerDiscountValue) : "",
@@ -218,6 +233,7 @@ function SearchResults({ results, onSelect }) {
 
 function RuleCard({ rule, onEdit, isCollapsed, onToggleCollapse }) {
   const offers = Array.isArray(rule.offerProducts) ? rule.offerProducts : [];
+  const extraTriggerSkus = getExtraTriggerSkusFromRule(rule);
 
   return (
     <Card>
@@ -235,6 +251,7 @@ function RuleCard({ rule, onEdit, isCollapsed, onToggleCollapse }) {
                 {rule.isActive ? "Active" : "Inactive"}
               </Badge>
               <Badge>{offers.length} offers</Badge>
+              {extraTriggerSkus ? <Badge tone="attention">Extra SKUs</Badge> : null}
             </InlineStack>
           </BlockStack>
 
@@ -294,7 +311,10 @@ function RuleCard({ rule, onEdit, isCollapsed, onToggleCollapse }) {
                 <Text as="p" variant="bodySm">Variant ID: {rule.triggerVariantId}</Text>
               ) : null}
               {rule.triggerSku ? (
-                <Text as="p" variant="bodySm">SKU: {rule.triggerSku}</Text>
+                <Text as="p" variant="bodySm">Primary SKU: {rule.triggerSku}</Text>
+              ) : null}
+              {extraTriggerSkus ? (
+                <Text as="p" variant="bodySm">Extra trigger SKUs: {extraTriggerSkus}</Text>
               ) : null}
               {rule.triggerTag ? (
                 <Text as="p" variant="bodySm">Tag: {rule.triggerTag}</Text>
@@ -388,6 +408,9 @@ function TriggerTypeHelp() {
           <strong>SKU:</strong> Show the upsell when the viewed product matches a searched SKU.
         </Text>
         <Text as="p" variant="bodyMd">
+          <strong>Extra trigger SKUs:</strong> Add multiple SKUs to trigger the same bundle rule without creating duplicate rules.
+        </Text>
+        <Text as="p" variant="bodyMd">
           <strong>Product ID:</strong> Show the upsell for one selected product.
         </Text>
         <Text as="p" variant="bodyMd">
@@ -411,9 +434,16 @@ export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const rules = await listUpsellRules(session.shop);
 
+  const rulesWithTriggers = await Promise.all(
+    rules.map(async (rule) => ({
+      ...rule,
+      triggers: await listUpsellTriggers(rule.id),
+    })),
+  );
+
   return Response.json({
     shop: session.shop,
-    rules,
+    rules: rulesWithTriggers,
   });
 }
 
@@ -433,12 +463,37 @@ export async function action({ request }) {
     return result;
   }
 
+  async function saveExtraTriggerSkus(ruleId, payload) {
+    if (!ruleId) return;
+
+    const extraTriggerSkus = String(payload.extraTriggerSkus || "")
+      .split(",")
+      .map((sku) => sku.trim())
+      .filter(Boolean);
+
+    await replaceUpsellTriggers(
+      ruleId,
+      extraTriggerSkus.map((sku, index) => ({
+        triggerType: "SKU",
+        sku,
+        title: sku,
+        position: index,
+      })),
+    );
+  }
+
   try {
     if (intent === "create") {
       const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await syncIfOk(
-        await createUpsellRule(session.shop, payload),
-      );
+      const result = await createUpsellRule(session.shop, payload);
+
+      if (result?.ok && result.rule?.id) {
+        await saveExtraTriggerSkus(result.rule.id, payload);
+        await syncUpsellRulesToBundleDiscount({
+          shop: session.shop,
+          admin,
+        });
+      }
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -448,9 +503,15 @@ export async function action({ request }) {
     if (intent === "update") {
       const id = formData.get("id");
       const payload = JSON.parse(formData.get("payload") || "{}");
-      const result = await syncIfOk(
-        await updateUpsellRule(id, session.shop, payload),
-      );
+      const result = await updateUpsellRule(id, session.shop, payload);
+
+      if (result?.ok) {
+        await saveExtraTriggerSkus(id, payload);
+        await syncUpsellRulesToBundleDiscount({
+          shop: session.shop,
+          admin,
+        });
+      }
 
       return Response.json(result, {
         status: result.ok ? 200 : 400,
@@ -563,6 +624,10 @@ export default function UpsellsPage() {
         )
         .join(" ");
 
+      const extraTriggerText = (rule.triggers || [])
+        .map((trigger) => [trigger.sku, trigger.title, trigger.handle].filter(Boolean).join(" "))
+        .join(" ");
+
       const haystack = [
         rule.name,
         rule.type,
@@ -573,6 +638,7 @@ export default function UpsellsPage() {
         rule.triggerProductId,
         rule.triggerVariantId,
         rule.triggerCollectionId,
+        extraTriggerText,
         offerText,
       ]
         .filter(Boolean)
@@ -884,7 +950,7 @@ export default function UpsellsPage() {
                   onChange={(value) => setField("headlineText", value)}
                   autoComplete="off"
                   placeholder="Bundle these essentials and save instantly"
-                /> 
+                />
 
                 <InlineStack gap="300" wrap>
                   <div style={{ minWidth: 220 }}>
@@ -1011,6 +1077,17 @@ export default function UpsellsPage() {
                         </Text>
                       </Banner>
                     ) : null}
+
+                    {formState.triggerMode === "SKU" ? (
+                      <TextField
+                        label="Extra trigger SKUs"
+                        helpText="Optional. Add multiple SKUs separated by commas. These products will trigger the same bundle rule."
+                        value={formState.extraTriggerSkus || ""}
+                        onChange={(value) => setField("extraTriggerSkus", value)}
+                        autoComplete="off"
+                        placeholder="CPU-001, CPU-002, CPU-003"
+                      />
+                    ) : null}
                   </BlockStack>
                 ) : null}
               </BlockStack>
@@ -1052,7 +1129,7 @@ export default function UpsellsPage() {
                   />
                 </InlineStack>
               </BlockStack>
-            </Card>      
+            </Card>
 
             <Card>
               <BlockStack gap="400">
@@ -1226,7 +1303,7 @@ export default function UpsellsPage() {
             <TextField
               label="Search bundles"
               labelHidden
-              placeholder="Search by rule name, trigger SKU, offer SKU, tag, collection..."
+              placeholder="Search by rule name, trigger SKU, extra trigger SKU, offer SKU, tag, collection..."
               value={ruleSearch}
               onChange={setRuleSearch}
               autoComplete="off"

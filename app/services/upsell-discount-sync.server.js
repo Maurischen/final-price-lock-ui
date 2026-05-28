@@ -279,11 +279,25 @@ async function resolveCollectionProducts(admin, collectionId) {
   return [...new Set(skus)];
 }
 
+function getExtraTriggerSkus(rule) {
+  if (!Array.isArray(rule?.triggers)) return [];
+
+  return rule.triggers
+    .filter((trigger) => trigger?.triggerType === "SKU" && trigger?.sku)
+    .map((trigger) => trigger.sku)
+    .filter(Boolean);
+}
+
 async function buildTriggerMatch(admin, rule) {
   if (rule.triggerMode === "SKU") {
+    const triggerSkus = [
+      rule.triggerSku,
+      ...getExtraTriggerSkus(rule),
+    ].filter(Boolean);
+
     return {
       triggerMode: "SKU",
-      triggerSkus: rule.triggerSku ? [rule.triggerSku] : [],
+      triggerSkus: [...new Set(triggerSkus)],
       triggerProductIds: [],
       triggerVariantIds: [],
     };
@@ -428,6 +442,10 @@ async function buildBundleConfigFromUpsells({ shop, admin }) {
     include: {
       offerProducts: {
         where: { isActive: true },
+        orderBy: { position: "asc" },
+      },
+      triggers: {
+        where: { triggerType: "SKU" },
         orderBy: { position: "asc" },
       },
     },
