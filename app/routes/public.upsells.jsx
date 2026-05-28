@@ -25,23 +25,27 @@ export async function loader({ request }) {
   });
 
   const offerSkus = [
-    ...new Set(
-      (rules || [])
-        .flatMap((rule) => rule.offerSkus || [])
-        .filter(Boolean),
-    ),
-  ];
+  ...new Set(
+    (rules || [])
+      .flatMap((rule) => rule.offerSkus || [])
+      .filter(Boolean),
+  ),
+];
 
-  const productsBySku = {};
+const productsBySku = {};
 
-  if (offerSkus.length > 0) {
-    const searchQuery = offerSkus.map((s) => `sku:${s}`).join(" OR ");
-
-    const response = await admin.graphql(
-      `#graphql
-      query BundlerProducts($query: String!) {
-        products(first: 20, query: $query) {
-          nodes {
+for (const offerSku of offerSkus) {
+  const response = await admin.graphql(
+    `#graphql
+    query BundlerProductBySku($query: String!) {
+      productVariants(first: 1, query: $query) {
+        nodes {
+          id
+          sku
+          title
+          price
+          availableForSale
+          product {
             id
             title
             handle
@@ -49,45 +53,35 @@ export async function loader({ request }) {
               url
               altText
             }
-            variants(first: 20) {
-              nodes {
-                id
-                sku
-                title
-                price
-                availableForSale
-              }
-            }
           }
         }
-      }`,
-      {
-        variables: { query: searchQuery },
-      },
-    );
-
-    const json = await response.json();
-    const nodes = json?.data?.products?.nodes || [];
-
-    for (const product of nodes) {
-      for (const variant of product.variants?.nodes || []) {
-        if (!variant?.sku) continue;
-
-        productsBySku[variant.sku] = {
-          id: product.id,
-          title: product.title,
-          handle: product.handle,
-          image: product.featuredImage?.url || null,
-          imageAlt: product.featuredImage?.altText || product.title,
-          variantId: variant.id,
-          variantTitle: variant.title,
-          sku: variant.sku,
-          price: variant.price,
-          availableForSale: variant.availableForSale ?? false,
-        };
       }
-    }
-  }
+    }`,
+    {
+      variables: {
+        query: `sku:${offerSku}`,
+      },
+    },
+  );
+
+  const json = await response.json();
+  const variant = json?.data?.productVariants?.nodes?.[0];
+
+  if (!variant?.sku) continue;
+
+  productsBySku[offerSku] = {
+    id: variant.product.id,
+    title: variant.product.title,
+    handle: variant.product.handle,
+    image: variant.product.featuredImage?.url || null,
+    imageAlt: variant.product.featuredImage?.altText || variant.product.title,
+    variantId: variant.id,
+    variantTitle: variant.title,
+    sku: variant.sku,
+    price: variant.price,
+    availableForSale: variant.availableForSale ?? false,
+  };
+}
 
   const formattedRules = (rules || []).map((rule) => ({
     ...rule,
