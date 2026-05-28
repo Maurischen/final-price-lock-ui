@@ -412,7 +412,7 @@ async function initUpsellBlocks(root = document) {
 
     try {
       const [upsellRes, cart] = await Promise.all([
-        fetch(`/apps/upsell?sku=${encodeURIComponent(sku)}`),
+        fetch(`/apps/upsell?type=bundler&sku=${encodeURIComponent(sku)}`),
         getCart(),
       ]);
 
