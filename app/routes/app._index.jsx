@@ -176,7 +176,7 @@ export default function AppIndex() {
 
       <s-section>
         <s-paragraph>
-          Need to manage <strong>Promo Price <Dialog></Dialog>isplays</strong> for standalone,
+          Need to manage <strong>Promo Price Displays</strong> for standalone,
           bundle, upsell, or pre-loved discounts? Open the promo display rules
           panel below.
         </s-paragraph>
