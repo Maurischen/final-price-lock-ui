@@ -266,6 +266,21 @@ model UpsellTrigger {
   @@index([collectionId])
 }
 
+model BundlerRule {
+  id              String   @id @default(cuid())
+  shop            String
+  name            String
+  triggerSkusJson String
+  offerSkusJson   String
+  isActive        Boolean  @default(true)
+  priority        Int      @default(100)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shop])
+  @@index([shop, isActive])
+}
+
 enum UpsellRuleType {
   UPSELL
   CROSS_SELL
