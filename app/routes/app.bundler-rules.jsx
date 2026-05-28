@@ -44,6 +44,7 @@ export async function action({ request }) {
     createBundlerRule,
     updateBundlerRule,
     deleteBundlerRule,
+    duplicateBundlerRule,
     parseSkuList,
   } = await import("../services/bundler-rules.server");
 
@@ -53,16 +54,12 @@ export async function action({ request }) {
   const id = formData.get("id");
 
   if (intent === "duplicate") {
-  const { duplicateBundlerRule } = await import(
-    "../services/bundler-rules.server"
-  );
+    await duplicateBundlerRule({
+      id,
+      shop: session.shop,
+    });
 
-  await duplicateBundlerRule({
-    id,
-    shop: session.shop,
-  });
-
-  return redirect("/app/bundler-rules");
+    return redirect("/app/bundler-rules");
   }
 
   if (intent === "delete") {
@@ -115,7 +112,11 @@ export async function action({ request }) {
   return redirect("/app/bundler-rules");
 }
 
-function CreateBundlerRuleForm({ isSubmitting }) {
+function CreateBundlerRuleForm({
+  isSubmitting,
+  isCollapsed,
+  onToggleCollapse,
+}) {
   const [name, setName] = useState("");
   const [triggerSkus, setTriggerSkus] = useState("");
   const [offerSkus, setOfferSkus] = useState("");
@@ -129,84 +130,96 @@ function CreateBundlerRuleForm({ isSubmitting }) {
   return (
     <Card>
       <BlockStack gap="400">
-        <Text as="h2" variant="headingMd">
-          Create Bundler Rule
-        </Text>
+        <InlineStack align="space-between" blockAlign="center">
+          <Text as="h2" variant="headingMd">
+            Create Bundler Rule
+          </Text>
 
-        <Form method="post">
-          <input type="hidden" name="_intent" value="create" />
-          <input type="hidden" name="isActive" value={String(isActive)} />
+          <Button onClick={onToggleCollapse}>
+            {isCollapsed ? "Expand" : "Collapse"}
+          </Button>
+        </InlineStack>
 
-          <BlockStack gap="300">
-            <TextField
-              label="Rule Name"
-              name="name"
-              value={name}
-              onChange={setName}
-              autoComplete="off"
-              placeholder="Example: T54 Laptop Accessory Bundle"
-            />
+        {!isCollapsed && (
+          <>
+            <Divider />
 
-            <TextField
-              label="Bundle Badge Text"
-              name="badgeText"
-              value={badgeText}
-              onChange={setBadgeText}
-              autoComplete="off"
-            />
+            <Form method="post">
+              <input type="hidden" name="_intent" value="create" />
+              <input type="hidden" name="isActive" value={String(isActive)} />
 
-            <TextField
-              label="Bundle Headline"
-              name="headlineText"
-              value={headlineText}
-              onChange={setHeadlineText}
-              autoComplete="off"
-            />
+              <BlockStack gap="300">
+                <TextField
+                  label="Rule Name"
+                  name="name"
+                  value={name}
+                  onChange={setName}
+                  autoComplete="off"
+                  placeholder="Example: T54 Laptop Accessory Bundle"
+                />
 
-            <TextField
-              label="Trigger SKUs"
-              name="triggerSkus"
-              value={triggerSkus}
-              onChange={setTriggerSkus}
-              multiline={4}
-              autoComplete="off"
-              helpText="Comma separated or one SKU per line. Any one of these products will trigger the bundle."
-              placeholder={"LAPTOP-SKU-1\nLAPTOP-SKU-2\nLAPTOP-SKU-3"}
-            />
+                <TextField
+                  label="Bundle Badge Text"
+                  name="badgeText"
+                  value={badgeText}
+                  onChange={setBadgeText}
+                  autoComplete="off"
+                />
 
-            <TextField
-              label="Offer SKUs"
-              name="offerSkus"
-              value={offerSkus}
-              onChange={setOfferSkus}
-              multiline={4}
-              autoComplete="off"
-              helpText="Comma separated or one SKU per line. These products will show in the bundle."
-              placeholder={"BAG-001\nMOUSE-001\nT54"}
-            />
+                <TextField
+                  label="Bundle Headline"
+                  name="headlineText"
+                  value={headlineText}
+                  onChange={setHeadlineText}
+                  autoComplete="off"
+                />
 
-            <TextField
-              label="Priority"
-              name="priority"
-              type="number"
-              value={priority}
-              onChange={setPriority}
-              autoComplete="off"
-            />
+                <TextField
+                  label="Trigger SKUs"
+                  name="triggerSkus"
+                  value={triggerSkus}
+                  onChange={setTriggerSkus}
+                  multiline={4}
+                  autoComplete="off"
+                  helpText="Comma separated or one SKU per line. Any one of these products will trigger the bundle."
+                  placeholder={"LAPTOP-SKU-1\nLAPTOP-SKU-2\nLAPTOP-SKU-3"}
+                />
 
-            <Checkbox
-              label="Active"
-              checked={isActive}
-              onChange={setIsActive}
-            />
+                <TextField
+                  label="Offer SKUs"
+                  name="offerSkus"
+                  value={offerSkus}
+                  onChange={setOfferSkus}
+                  multiline={4}
+                  autoComplete="off"
+                  helpText="Comma separated or one SKU per line. These products will show in the bundle."
+                  placeholder={"BAG-001\nMOUSE-001\nT54"}
+                />
 
-            <InlineStack>
-              <Button submit variant="primary" loading={isSubmitting}>
-                Save Bundler Rule
-              </Button>
-            </InlineStack>
-          </BlockStack>
-        </Form>
+                <TextField
+                  label="Priority"
+                  name="priority"
+                  type="number"
+                  value={priority}
+                  onChange={setPriority}
+                  autoComplete="off"
+                />
+
+                <Checkbox
+                  label="Active"
+                  checked={isActive}
+                  onChange={setIsActive}
+                />
+
+                <InlineStack>
+                  <Button submit variant="primary" loading={isSubmitting}>
+                    Save Bundler Rule
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Form>
+          </>
+        )}
       </BlockStack>
     </Card>
   );
@@ -248,9 +261,20 @@ function EditBundlerRuleForm({
             </InlineStack>
           </BlockStack>
 
-          <Button onClick={onToggleCollapse}>
-            {isCollapsed ? "Expand" : "Collapse"}
-          </Button>
+          <InlineStack gap="200">
+            <Form method="post">
+              <input type="hidden" name="_intent" value="duplicate" />
+              <input type="hidden" name="id" value={rule.id} />
+
+              <Button submit variant="secondary">
+                Duplicate
+              </Button>
+            </Form>
+
+            <Button onClick={onToggleCollapse}>
+              {isCollapsed ? "Expand" : "Collapse"}
+            </Button>
+          </InlineStack>
         </InlineStack>
 
         {!isCollapsed && (
@@ -328,25 +352,14 @@ function EditBundlerRuleForm({
               </BlockStack>
             </Form>
 
-            <InlineStack gap="200">
-              <Form method="post">
-                <input type="hidden" name="_intent" value="duplicate" />
-                <input type="hidden" name="id" value={rule.id} />
+            <Form method="post">
+              <input type="hidden" name="_intent" value="delete" />
+              <input type="hidden" name="id" value={rule.id} />
 
-                <Button submit variant="secondary">
-                  Duplicate
-                </Button>
-              </Form>
-
-              <Form method="post">
-                <input type="hidden" name="_intent" value="delete" />
-                <input type="hidden" name="id" value={rule.id} />
-
-                <Button submit tone="critical" variant="secondary">
-                  Delete
-                </Button>
-              </Form>
-            </InlineStack>
+              <Button submit tone="critical" variant="secondary">
+                Delete
+              </Button>
+            </Form>
           </>
         )}
       </BlockStack>
@@ -359,6 +372,7 @@ export default function BundlerRulesPage() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [search, setSearch] = useState("");
+  const [isCreateCollapsed, setIsCreateCollapsed] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState(new Set());
 
   const filteredRules = rules.filter((rule) => {
@@ -394,7 +408,13 @@ export default function BundlerRulesPage() {
     <Page title="Bundler Rules">
       <Layout>
         <Layout.Section>
-          <CreateBundlerRuleForm isSubmitting={isSubmitting} />
+          <CreateBundlerRuleForm
+            isSubmitting={isSubmitting}
+            isCollapsed={isCreateCollapsed}
+            onToggleCollapse={() =>
+              setIsCreateCollapsed((current) => !current)
+            }
+          />
         </Layout.Section>
 
         <Layout.Section>
