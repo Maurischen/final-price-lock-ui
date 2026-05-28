@@ -149,7 +149,34 @@ export default function AppIndex() {
 
       <s-section>
         <s-paragraph>
-          Need to manage <strong>promo price displays</strong> for standalone,
+          Need to manage <strong>Upsell Rules</strong> with trigger
+          SKUs, accessory SKUs, and discount amounts? Open the upsell rules
+          panel below.
+        </s-paragraph>
+
+        <Form method="get" action="/app/upsell-rules">
+          <s-button variant="secondary" type="submit">
+            Open Upsell Rules
+          </s-button>
+        </Form>
+      </s-section>
+
+      <s-section>
+        <s-paragraph>
+          Need to manage <strong>Bundler Rules</strong> with multiple trigger
+          and accessory SKUs? Open the bundler rules panel below.
+        </s-paragraph>
+
+        <Form method="get" action="/app/bundler-rules">
+          <s-button variant="secondary" type="submit">
+            Open Bundler Rules
+          </s-button>
+        </Form>
+      </s-section>
+
+      <s-section>
+        <s-paragraph>
+          Need to manage <strong>Promo Price <Dialog></Dialog>isplays</strong> for standalone,
           bundle, upsell, or pre-loved discounts? Open the promo display rules
           panel below.
         </s-paragraph>
