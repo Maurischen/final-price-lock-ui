@@ -425,8 +425,12 @@ async function initUpsellBlocks(root = document) {
         rules: [
           ...(oldUpsellData?.rules || []),
           ...(newBundlerData?.rules || []),
-        ],
+        ].filter((rule) => Array.isArray(rule.offers) && rule.offers.length > 0),
       };
+
+      console.log("OLD UPSELL DATA:", oldUpsellData);
+      console.log("NEW BUNDLER DATA:", newBundlerData);
+      console.log("COMBINED DATA:", data);
 
       if (!data || !data.rules || !data.rules.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
@@ -489,6 +493,9 @@ async function initUpsellBlocks(root = document) {
       }
 
       triggerProduct.triggerDiscountOffer = triggerDiscountOffer;
+
+      console.log("RENDERED OFFER ITEMS:", renderedOfferItems);
+      console.log("OFFERS STATE:", offersState);
 
       if (!renderedOfferItems.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
