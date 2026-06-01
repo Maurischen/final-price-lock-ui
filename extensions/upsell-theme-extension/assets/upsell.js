@@ -411,12 +411,22 @@ async function initUpsellBlocks(root = document) {
     content.innerHTML = `<div class="upsell-loading">Loading recommendations...</div>`;
 
     try {
-      const [upsellRes, cart] = await Promise.all([
+      const [oldUpsellRes, newBundlerRes, cart] = await Promise.all([
+        fetch(`/apps/upsell?sku=${encodeURIComponent(sku)}`),
         fetch(`/apps/upsell?type=bundler&sku=${encodeURIComponent(sku)}`),
         getCart(),
       ]);
 
-      const data = await upsellRes.json();
+      const oldUpsellData = await oldUpsellRes.json();
+      const newBundlerData = await newBundlerRes.json();
+
+      const data = {
+        ok: true,
+        rules: [
+          ...(oldUpsellData?.rules || []),
+          ...(newBundlerData?.rules || []),
+        ],
+      };
 
       if (!data || !data.rules || !data.rules.length) {
         const wrapper = block.querySelector(".upsell-block__inner");
