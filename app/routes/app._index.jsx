@@ -154,7 +154,7 @@ export default function AppIndex() {
           panel below.
         </s-paragraph>
 
-        <Form method="get" action="/app/upsell-rules">
+        <Form method="get" action="/app/upsells">
           <s-button variant="secondary" type="submit">
             Open Upsell Rules
           </s-button>
