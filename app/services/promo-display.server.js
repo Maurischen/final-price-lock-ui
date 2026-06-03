@@ -239,7 +239,24 @@ export async function disablePromoDisplayRule({ admin, shop, id }) {
 }
 
 export async function deletePromoDisplayRule({ admin, shop, id }) {
-  const rule = await disablePromoDisplayRule({ admin, shop, id });
+  const rule = await db.promoDisplayRule.findFirst({
+    where: { id, shop },
+  });
+
+  if (!rule) {
+    throw new Error("Promo display rule not found");
+  }
+
+  await syncPromoDisplayMetafields(admin, {
+    ...rule,
+    isEnabled: false,
+    discountAmount: 0,
+    discountPercent: 0,
+    label: "",
+    source: "",
+    discountType: "",
+    priority: 100,
+  });
 
   await db.promoDisplayRule.delete({
     where: { id: rule.id },

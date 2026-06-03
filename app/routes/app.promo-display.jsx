@@ -169,12 +169,14 @@ const rows = rules.map((rule) => [
     <Button
       size="slim"
       tone="critical"
-      onClick={() =>
-        submit(
-          { _intent: "delete", id: rule.id },
-          { method: "post" }
-        )
-      }
+      onClick={() => {
+        if (confirm(`Delete promo display rule for ${rule.sku}?`)) {
+          submit(
+            { _intent: "delete", id: rule.id },
+            { method: "post" }
+          );
+        }
+      }}
     >
       Delete
     </Button>
