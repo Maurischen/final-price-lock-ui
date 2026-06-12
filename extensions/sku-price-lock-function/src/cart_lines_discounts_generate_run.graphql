@@ -24,7 +24,10 @@ query CartInput {
     }
   }
   discount {
-    metafield(namespace: "$app:bundle-discount", key: "function-configuration") {
+    metafield(
+      namespace: "app--299787976705--bundle-discount"
+      key: "function-configuration"
+    ) {
       jsonValue
     }
   }

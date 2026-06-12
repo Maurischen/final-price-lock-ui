@@ -25,6 +25,7 @@ import { authenticate } from "../shopify.server";
 
 const TITLE = "Laptop Bundle Discount";
 const NAMESPACE = "$app:bundle-discount";
+const EXPANDED_NAMESPACE = "app--299787976705--bundle-discount";
 const KEY = "function-configuration";
 
 const DISCOUNT_TYPE_TITLE = "SKU Price Lock";
@@ -47,6 +48,9 @@ query FindBundleDiscounts {
       metafield(namespace: "${NAMESPACE}", key: "${KEY}") {
         jsonValue
       }
+      expandedMetafield: metafield(namespace: "${EXPANDED_NAMESPACE}", key: "${KEY}") {
+        jsonValue
+      }
       discount {
         __typename
         ... on DiscountAutomaticApp {
@@ -66,6 +70,22 @@ mutation CreateBundleDiscount($input: DiscountAutomaticAppInput!) {
       discountId
       title
       status
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+`;
+
+const METAFIELDS_SET_MUTATION = `#graphql
+mutation SetBundleDiscountMetafield($metafields: [MetafieldsSetInput!]!) {
+  metafieldsSet(metafields: $metafields) {
+    metafields {
+      id
+      namespace
+      key
     }
     userErrors {
       field
@@ -251,7 +271,7 @@ async function findOrCreateBundleDiscount(admin) {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
-        config: normalizeConfig(node.metafield?.jsonValue),
+        config: normalizeConfig(node.metafield?.jsonValue || node.expandedMetafield?.jsonValue),
       };
     }
   }
@@ -352,24 +372,22 @@ export async function action({ request }) {
     const cleanConfig = sanitizeConfig(parsed);
     const discount = await findOrCreateBundleDiscount(admin);
 
-    const updateRes = await admin.graphql(UPDATE_MUTATION, {
+    const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
       variables: {
-        id: discount.id,
-        input: {
-          metafields: [
-            {
-              namespace: NAMESPACE,
-              key: KEY,
-              type: "json",
-              value: JSON.stringify(cleanConfig),
-            },
-          ],
-        },
+        metafields: [
+          {
+            ownerId: discount.id,
+            namespace: NAMESPACE,
+            key: KEY,
+            type: "json",
+            value: JSON.stringify(cleanConfig),
+          },
+        ],
       },
     });
 
-    const updateJson = await updateRes.json();
-    const payload = updateJson?.data?.discountAutomaticAppUpdate;
+    const metafieldsJson = await metafieldsRes.json();
+    const payload = metafieldsJson?.data?.metafieldsSet;
     const userErrors = payload?.userErrors || [];
 
     if (userErrors.length > 0) {
