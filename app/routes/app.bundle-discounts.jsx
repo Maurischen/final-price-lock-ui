@@ -296,6 +296,8 @@ async function findOrCreateBundleDiscount(admin) {
       discount?.__typename === "DiscountAutomaticApp" &&
       discount.title === TITLE
     ) {
+      console.log("FOUND DISCOUNT", JSON.stringify(node, null, 2));
+      
       return {
         id: node.id,
         title: discount.title,
