@@ -26,6 +26,7 @@ import { authenticate } from "../shopify.server";
 import {
   listPromoDisplayRules,
   upsertPromoDisplayRule,
+  enablePromoDisplayRule,
   disablePromoDisplayRule,
   deletePromoDisplayRule,
 } from "../services/promo-display.server";
@@ -34,6 +35,13 @@ export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const rules = await listPromoDisplayRules(session.shop);
   return Response.json({ rules });
+}
+
+function parseIds(formData) {
+  return String(formData.get("ids") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 export async function action({ request }) {
@@ -78,11 +86,22 @@ export async function action({ request }) {
         source,
         sku,
         discountType,
-        discountAmount: discountType === "FIXED" ? Math.round(amountRand * 100) : null,
+        discountAmount:
+          discountType === "FIXED" ? Math.round(amountRand * 100) : null,
         discountPercent: discountType === "PERCENTAGE" ? percent : null,
         label,
         priority,
         isEnabled,
+      });
+
+      return redirect("/app/promo-display");
+    }
+
+    if (intent === "enable") {
+      await enablePromoDisplayRule({
+        admin,
+        shop: session.shop,
+        id: String(formData.get("id") || ""),
       });
 
       return redirect("/app/promo-display");
@@ -108,11 +127,36 @@ export async function action({ request }) {
       return redirect("/app/promo-display");
     }
 
+    if (intent === "bulkEnable") {
+      const ids = parseIds(formData);
+
+      for (const id of ids) {
+        await enablePromoDisplayRule({
+          admin,
+          shop: session.shop,
+          id,
+        });
+      }
+
+      return redirect("/app/promo-display");
+    }
+
+    if (intent === "bulkDisable") {
+      const ids = parseIds(formData);
+
+      for (const id of ids) {
+        await disablePromoDisplayRule({
+          admin,
+          shop: session.shop,
+          id,
+        });
+      }
+
+      return redirect("/app/promo-display");
+    }
+
     if (intent === "bulkDelete") {
-      const ids = String(formData.get("ids") || "")
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean);
+      const ids = parseIds(formData);
 
       for (const id of ids) {
         await deletePromoDisplayRule({
@@ -187,6 +231,22 @@ export default function PromoDisplayPage() {
     }
   }
 
+  function submitSingleAction(intent, id) {
+    const formData = new FormData();
+    formData.append("_intent", intent);
+    formData.append("id", id);
+
+    submit(formData, { method: "post" });
+  }
+
+  function submitBulkAction(intent) {
+    const formData = new FormData();
+    formData.append("_intent", intent);
+    formData.append("ids", selectedIds.join(","));
+
+    submit(formData, { method: "post" });
+  }
+
   const rows = rules.map((rule) => [
     <Checkbox
       key={`select-${rule.id}`}
@@ -211,17 +271,19 @@ export default function PromoDisplayPage() {
         Edit
       </Button>
 
-      {rule.isEnabled && (
+      {rule.isEnabled ? (
         <Button
           size="slim"
-          onClick={() =>
-            submit(
-              { _intent: "disable", id: rule.id },
-              { method: "post" },
-            )
-          }
+          onClick={() => submitSingleAction("disable", rule.id)}
         >
           Disable
+        </Button>
+      ) : (
+        <Button
+          size="slim"
+          onClick={() => submitSingleAction("enable", rule.id)}
+        >
+          Enable
         </Button>
       )}
 
@@ -230,10 +292,7 @@ export default function PromoDisplayPage() {
         tone="critical"
         onClick={() => {
           if (confirm(`Delete promo display rule for ${rule.sku}?`)) {
-            submit(
-              { _intent: "delete", id: rule.id },
-              { method: "post" },
-            );
+            submitSingleAction("delete", rule.id);
           }
         }}
       >
@@ -262,7 +321,11 @@ export default function PromoDisplayPage() {
 
               <Form method="post">
                 <input type="hidden" name="_intent" value="save" />
-                <input type="hidden" name="isEnabled" value={isEnabled ? "on" : "off"} />
+                <input
+                  type="hidden"
+                  name="isEnabled"
+                  value={isEnabled ? "on" : "off"}
+                />
 
                 <BlockStack gap="300">
                   <TextField
@@ -366,24 +429,30 @@ export default function PromoDisplayPage() {
                 </Text>
 
                 {selectedIds.length > 0 && (
-                  <Button
-                    tone="critical"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Delete ${selectedIds.length} selected promo display rule(s)?`,
-                        )
-                      ) {
-                        const formData = new FormData();
-                        formData.append("_intent", "bulkDelete");
-                        formData.append("ids", selectedIds.join(","));
+                  <InlineStack gap="200">
+                    <Button onClick={() => submitBulkAction("bulkEnable")}>
+                      Enable selected ({selectedIds.length})
+                    </Button>
 
-                        submit(formData, { method: "post" });
-                      }
-                    }}
-                  >
-                    Delete selected ({selectedIds.length})
-                  </Button>
+                    <Button onClick={() => submitBulkAction("bulkDisable")}>
+                      Disable selected ({selectedIds.length})
+                    </Button>
+
+                    <Button
+                      tone="critical"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Delete ${selectedIds.length} selected promo display rule(s)?`,
+                          )
+                        ) {
+                          submitBulkAction("bulkDelete");
+                        }
+                      }}
+                    >
+                      Delete selected ({selectedIds.length})
+                    </Button>
+                  </InlineStack>
                 )}
               </InlineStack>
 
@@ -405,7 +474,9 @@ export default function PromoDisplayPage() {
                   headings={[
                     <Checkbox
                       key="select-all"
-                      checked={rules.length > 0 && selectedIds.length === rules.length}
+                      checked={
+                        rules.length > 0 && selectedIds.length === rules.length
+                      }
                       onChange={toggleAll}
                     />,
                     "SKU",

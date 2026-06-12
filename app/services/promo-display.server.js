@@ -207,7 +207,6 @@ export async function upsertPromoDisplayRule({
   endsAt = null,
 }) {
   const cleanSku = String(sku || "").trim();
-
   const variant = await findVariantBySku(admin, cleanSku);
 
   const rule = await db.promoDisplayRule.upsert({
@@ -263,6 +262,30 @@ export async function listPromoDisplayRules(shop) {
       { source: "asc" },
       { sku: "asc" },
     ],
+  });
+}
+
+export async function enablePromoDisplayRule({ admin, shop, id }) {
+  const rule = await db.promoDisplayRule.findFirst({
+    where: { id, shop },
+  });
+
+  if (!rule) {
+    throw new Error("Promo display rule not found");
+  }
+
+  const enabledRule = {
+    ...rule,
+    isEnabled: true,
+  };
+
+  await syncPromoDisplayMetafields(admin, enabledRule);
+
+  return db.promoDisplayRule.update({
+    where: { id: rule.id },
+    data: {
+      isEnabled: true,
+    },
   });
 }
 
