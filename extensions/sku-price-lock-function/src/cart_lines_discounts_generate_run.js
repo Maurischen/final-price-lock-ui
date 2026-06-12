@@ -220,7 +220,9 @@ function buildTriggerDiscountCandidate(lineId, quantity, rule) {
   if (discountMode === "NONE") return null;
   if (!Number.isFinite(discountValue) || discountValue <= 0) return null;
 
-  const message = rule.triggerDiscountLabel || rule.message || "Bundle discount";
+    const message =
+    (rule.triggerDiscountLabel || "Trigger Discount") +
+    " (Trigger Product)";
 
   return buildDiscountCandidate(
     lineId,

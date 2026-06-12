@@ -297,7 +297,7 @@ async function findOrCreateBundleDiscount(admin) {
       discount.title === TITLE
     ) {
       console.log("FOUND DISCOUNT", JSON.stringify(node, null, 2));
-      
+
       return {
         id: node.id,
         title: discount.title,
@@ -410,6 +410,13 @@ export async function action({ request }) {
       discount.status,
     );
 
+   console.log(
+    "ABOUT TO WRITE METAFIELD",
+    discount.id,
+    EXPANDED_NAMESPACE,
+    KEY,
+  );
+
     const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
       variables: {
         metafields: [
@@ -425,6 +432,10 @@ export async function action({ request }) {
     });
 
     const metafieldsJson = await metafieldsRes.json();
+    console.log(
+      "METAFIELD WRITE RESULT",
+      JSON.stringify(metafieldsJson, null, 2),
+    );
     const payload = metafieldsJson?.data?.metafieldsSet;
     const userErrors = payload?.userErrors || [];
 
