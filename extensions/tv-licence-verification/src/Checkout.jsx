@@ -1,6 +1,7 @@
 import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
 import {useEffect, useRef, useState} from 'preact/hooks';
+import {useBuyerJourneyIntercept} from '@shopify/ui-extensions/preact';
 
 export default function extension() {
   render(<Extension />, document.body);
@@ -115,36 +116,40 @@ function Extension() {
     return nextErrors;
   }
 
-  shopify.buyerJourney.intercept(({canBlockProgress}) => {
-    if (!hasTvInCart) {
-      return {behavior: 'allow'};
-    }
+  useBuyerJourneyIntercept(({canBlockProgress}) => {
+  if (!hasTvInCart) {
+    return {behavior: 'allow'};
+  }
 
-    if (!canBlockProgress) {
-      return {behavior: 'allow'};
-    }
+  const nextErrors = getValidationErrors(form);
+  const hasErrors = Object.keys(nextErrors).length > 0;
 
-    const nextErrors = getValidationErrors(form);
-
-    if (Object.keys(nextErrors).length === 0) {
-      return {
-        behavior: 'allow',
-        perform: () => setErrors({}),
-      };
-    }
-
+  if (!hasErrors) {
     return {
-      behavior: 'block',
-      reason: 'TV licence verification is required',
-      perform: () => setErrors(nextErrors),
-      errors: [
-        {
-          message:
-            'Please complete the required TV licence verification fields before continuing.',
-        },
-      ],
+      behavior: 'allow',
+      perform: () => setErrors({}),
     };
-  });
+  }
+
+  if (!canBlockProgress) {
+    return {
+      behavior: 'allow',
+      perform: () => setErrors(nextErrors),
+    };
+  }
+
+  return {
+    behavior: 'block',
+    reason: 'TV licence verification is required',
+    perform: () => setErrors(nextErrors),
+    errors: [
+      {
+        message:
+          'Please complete the required TV licence verification fields before continuing.',
+      },
+    ],
+  };
+});
 
   async function saveForm(nextForm) {
     if (!shopify.applyMetafieldChange) return;
