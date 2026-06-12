@@ -17,13 +17,19 @@ const EMPTY_FORM = {
 
 function Extension() {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
   const hasLoadedSavedValues = useRef(false);
 
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
   const getValue = (event) => {
-    return String(event?.target?.value ?? event?.currentTarget?.value ?? event ?? '');
+    return String(
+      event?.target?.value ??
+        event?.currentTarget?.value ??
+        event ??
+        '',
+    );
   };
 
   const getNumericProductId = (gid) => {
@@ -83,6 +89,63 @@ function Extension() {
     hasLoadedSavedValues.current = true;
   }, [savedFormJson]);
 
+  function getValidationErrors(currentForm) {
+    const nextErrors = {};
+
+    if (!currentForm.fullName.trim()) {
+      nextErrors.fullName = 'Full name is required';
+    }
+
+    if (!currentForm.idNumber.trim()) {
+      nextErrors.idNumber = 'ID or passport number is required';
+    }
+
+    if (!currentForm.contactNumber.trim()) {
+      nextErrors.contactNumber = 'Contact number is required';
+    }
+
+    if (!currentForm.emailAddress.trim()) {
+      nextErrors.emailAddress = 'Email address is required';
+    }
+
+    if (!currentForm.residentialAddress.trim()) {
+      nextErrors.residentialAddress = 'Residential address is required';
+    }
+
+    return nextErrors;
+  }
+
+  shopify.buyerJourney.intercept(({canBlockProgress}) => {
+    if (!hasTvInCart) {
+      return {behavior: 'allow'};
+    }
+
+    if (!canBlockProgress) {
+      return {behavior: 'allow'};
+    }
+
+    const nextErrors = getValidationErrors(form);
+
+    if (Object.keys(nextErrors).length === 0) {
+      return {
+        behavior: 'allow',
+        perform: () => setErrors({}),
+      };
+    }
+
+    return {
+      behavior: 'block',
+      reason: 'TV licence verification is required',
+      perform: () => setErrors(nextErrors),
+      errors: [
+        {
+          message:
+            'Please complete the required TV licence verification fields before continuing.',
+        },
+      ],
+    };
+  });
+
   async function saveForm(nextForm) {
     if (!shopify.applyMetafieldChange) return;
 
@@ -97,7 +160,10 @@ function Extension() {
     });
 
     if (result?.type === 'error') {
-      console.error('Failed to save TV licence verification form', result.message);
+      console.error(
+        'Failed to save TV licence verification form',
+        result.message,
+      );
     }
   }
 
@@ -111,6 +177,11 @@ function Extension() {
 
     setForm(nextForm);
     saveForm(nextForm);
+
+    if (errors[field]) {
+      const nextErrors = getValidationErrors(nextForm);
+      setErrors(nextErrors);
+    }
   }
 
   if (!hasTvInCart) {
@@ -128,12 +199,14 @@ function Extension() {
       <s-text-field
         label="Full Name and Surname"
         value={form.fullName}
+        error={errors.fullName}
         onInput={(event) => updateField('fullName', event)}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
         value={form.idNumber}
+        error={errors.idNumber}
         onInput={(event) => updateField('idNumber', event)}
       />
 
@@ -146,18 +219,21 @@ function Extension() {
       <s-text-field
         label="Contact Number"
         value={form.contactNumber}
+        error={errors.contactNumber}
         onInput={(event) => updateField('contactNumber', event)}
       />
 
       <s-text-field
         label="Email Address"
         value={form.emailAddress}
+        error={errors.emailAddress}
         onInput={(event) => updateField('emailAddress', event)}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
         value={form.residentialAddress}
+        error={errors.residentialAddress}
         onInput={(event) => updateField('residentialAddress', event)}
       />
 
