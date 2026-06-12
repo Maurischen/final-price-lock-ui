@@ -17,7 +17,8 @@ function Extension() {
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
-  const getValue = (value) => String(value || '');
+  const getInputValue = (event) =>
+    String(event?.target?.value ?? event?.currentTarget?.value ?? '');
 
   const getNumericProductId = (gid) => {
     const match = String(gid || '').match(/(\d+)$/);
@@ -86,42 +87,42 @@ function Extension() {
       <s-text-field
         label="Full Name and Surname"
         value={fullName}
-        onInput={(value) => setFullName(getValue(value))}
+        onInput={(event) => setFullName(getInputValue(event))}
         onBlur={saveForm}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
         value={idNumber}
-        onInput={(value) => setIdNumber(getValue(value))}
+        onInput={(event) => setIdNumber(getInputValue(event))}
         onBlur={saveForm}
       />
 
       <s-text-field
         label="TV Licence Number (if available)"
         value={tvLicenceNumber}
-        onInput={(value) => setTvLicenceNumber(getValue(value))}
+        onInput={(event) => setTvLicenceNumber(getInputValue(event))}
         onBlur={saveForm}
       />
 
       <s-text-field
         label="Contact Number"
         value={contactNumber}
-        onInput={(value) => setContactNumber(getValue(value))}
+        onInput={(event) => setContactNumber(getInputValue(event))}
         onBlur={saveForm}
       />
 
       <s-text-field
         label="Email Address"
         value={emailAddress}
-        onInput={(value) => setEmailAddress(getValue(value))}
+        onInput={(event) => setEmailAddress(getInputValue(event))}
         onBlur={saveForm}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
         value={residentialAddress}
-        onInput={(value) => setResidentialAddress(getValue(value))}
+        onInput={(event) => setResidentialAddress(getInputValue(event))}
         onBlur={saveForm}
       />
 
