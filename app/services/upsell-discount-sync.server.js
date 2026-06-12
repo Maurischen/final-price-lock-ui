@@ -71,10 +71,15 @@ async function getCurrentStoreFunctionId(admin) {
   const json = await res.json();
 
   const types = json?.data?.appDiscountTypes || [];
-  const match = types.find((item) => item?.functionId);
+
+  console.log("APP DISCOUNT TYPES:", JSON.stringify(types, null, 2));
+
+  const match = types.find(
+    (item) => item?.title === TITLE && item?.functionId,
+  );
 
   if (!match?.functionId) {
-    throw new Error("Could not find a discount functionId for this store.");
+    throw new Error(`Could not find discount functionId for "${TITLE}".`);
   }
 
   return match.functionId;

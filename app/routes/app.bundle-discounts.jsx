@@ -28,7 +28,7 @@ const NAMESPACE = "$app:bundle-discount";
 const EXPANDED_NAMESPACE = "app--299787976705--bundle-discount";
 const KEY = "function-configuration";
 
-const DISCOUNT_TYPE_TITLE = "SKU Price Lock";
+const DISCOUNT_TYPE_TITLE = "Laptop Bundle Discount";
 
 const GET_APP_DISCOUNT_TYPES_QUERY = `#graphql
 query GetAppDiscountTypes {
