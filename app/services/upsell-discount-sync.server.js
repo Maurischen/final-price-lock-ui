@@ -102,7 +102,11 @@ async function findOrCreateBundleDiscount(admin) {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
-        config: node.metafield?.jsonValue || {},
+        config: {
+          rules: Array.isArray(node.metafield?.jsonValue?.rules)
+            ? node.metafield.jsonValue.rules
+            : [],
+        },
       };
     }
   }
@@ -126,7 +130,7 @@ async function findOrCreateBundleDiscount(admin) {
             namespace: NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify({ rules: [], standaloneDiscounts: [] }),
+            value: JSON.stringify({ rules: [] }),
           },
         ],
       },
@@ -151,7 +155,7 @@ async function findOrCreateBundleDiscount(admin) {
     id,
     title: TITLE,
     status: payload?.automaticAppDiscount?.status || "",
-    config: { rules: [], standaloneDiscounts: [] },
+    config: { rules: [] },
   };
 }
 
@@ -454,7 +458,6 @@ async function buildBundleConfigFromUpsells({ shop, admin }) {
 
   return {
     rules: functionRules,
-    syncedAt: new Date().toISOString(),
   };
 }
 
@@ -463,33 +466,19 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
   const upsellConfig = await buildBundleConfigFromUpsells({ shop, admin });
 
   const cleanConfig = {
-    ...discount.config,
-    ...upsellConfig,
-    standaloneDiscounts: Array.isArray(discount.config?.standaloneDiscounts)
-      ? discount.config.standaloneDiscounts
-      : [],
+    rules: Array.isArray(upsellConfig?.rules) ? upsellConfig.rules : [],
+    syncedAt: new Date().toISOString(),
   };
-
-  console.log("BUNDLE DISCOUNT ID:", discount.id);
-  console.log("BUNDLE CLEAN CONFIG:", JSON.stringify(cleanConfig, null, 2));
 
   const payloadString = JSON.stringify(cleanConfig);
 
+  console.log("BUNDLE DISCOUNT ID:", discount.id);
   console.log(
     "BUNDLE CONFIG SIZE:",
     Buffer.byteLength(payloadString, "utf8"),
-    "bytes"
+    "bytes",
   );
-
-  console.log(
-    "RULE COUNT:",
-    cleanConfig.rules?.length || 0
-  );
-
-  console.log(
-    "STANDALONE COUNT:",
-    cleanConfig.standaloneDiscounts?.length || 0
-  );
+  console.log("RULE COUNT:", cleanConfig.rules?.length || 0);
 
   const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
     variables: {
@@ -499,7 +488,7 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
           namespace: NAMESPACE,
           key: KEY,
           type: "json",
-          value: JSON.stringify(cleanConfig),
+          value: payloadString,
         },
       ],
     },
@@ -507,6 +496,7 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
 
   const metafieldsJson = await metafieldsRes.json();
   console.log("METAFIELDS SET RESPONSE:", JSON.stringify(metafieldsJson, null, 2));
+
   const metafieldsPayload = metafieldsJson?.data?.metafieldsSet;
   const userErrors = metafieldsPayload?.userErrors || [];
 

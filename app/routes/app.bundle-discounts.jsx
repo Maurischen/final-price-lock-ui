@@ -95,37 +95,11 @@ mutation SetBundleDiscountMetafield($metafields: [MetafieldsSetInput!]!) {
 }
 `;
 
-const UPDATE_MUTATION = `#graphql
-mutation UpdateBundleDiscount($id: ID!, $input: DiscountAutomaticAppInput!) {
-  discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $input) {
-    automaticAppDiscount {
-      discountId
-      title
-      status
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-`;
-
 function emptyAccessory() {
   return {
     sku: "",
     discountAmount: "",
     label: "",
-  };
-}
-
-function emptyStandaloneDiscount() {
-  return {
-    active: true,
-    sku: "",
-    discountMode: "FIXED",
-    discountAmount: "",
-    message: "Promo discount",
   };
 }
 
@@ -147,9 +121,6 @@ function emptyRule() {
 
 function normalizeConfig(rawConfig) {
   const rules = Array.isArray(rawConfig?.rules) ? rawConfig.rules : [];
-  const standaloneDiscounts = Array.isArray(rawConfig?.standaloneDiscounts)
-    ? rawConfig.standaloneDiscounts
-    : [];
 
   return {
     rules: rules.map((rule) => ({
@@ -158,16 +129,20 @@ function normalizeConfig(rawConfig) {
       triggerSku: String(rule?.triggerSku || ""),
       ratio: Number(rule?.ratio || 1),
       message: String(rule?.message || "Laptop bundle discount"),
-          triggerDiscountMode:
-      rule?.triggerDiscountMode === "FIXED" ||
-      rule?.triggerDiscountMode === "PERCENTAGE"
-        ? rule.triggerDiscountMode
-        : "NONE",
-    triggerDiscountValue:
-      rule?.triggerDiscountValue === 0 || rule?.triggerDiscountValue
-        ? String(rule.triggerDiscountValue)
-        : "",
-    triggerDiscountLabel: String(rule?.triggerDiscountLabel || ""),
+
+      triggerDiscountMode:
+        rule?.triggerDiscountMode === "FIXED" ||
+        rule?.triggerDiscountMode === "PERCENTAGE"
+          ? rule.triggerDiscountMode
+          : "NONE",
+
+      triggerDiscountValue:
+        rule?.triggerDiscountValue === 0 || rule?.triggerDiscountValue
+          ? String(rule.triggerDiscountValue)
+          : "",
+
+      triggerDiscountLabel: String(rule?.triggerDiscountLabel || ""),
+
       accessories:
         Array.isArray(rule?.accessories) && rule.accessories.length > 0
           ? rule.accessories.map((accessory) => ({
@@ -179,19 +154,6 @@ function normalizeConfig(rawConfig) {
               label: String(accessory?.label || ""),
             }))
           : [emptyAccessory()],
-    })),
-
-    standaloneDiscounts: standaloneDiscounts.map((item) => ({
-      active: Boolean(item?.active ?? true),
-      sku: String(item?.sku || ""),
-      discountMode: item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
-      discountAmount:
-        item?.discountAmount === 0 || item?.discountAmount
-          ? String(item.discountAmount)
-          : item?.amount === 0 || item?.amount
-            ? String(item.amount)
-            : "",
-      message: String(item?.message || "Promo discount"),
     })),
   };
 }
@@ -207,20 +169,25 @@ function sanitizeConfig(rawConfig) {
         triggerSku: rule.triggerSku.trim(),
         ratio: Math.max(1, parseInt(rule.ratio, 10) || 1),
         message: rule.message.trim(),
+
         triggerDiscountMode:
           rule.triggerDiscountMode === "FIXED" ||
           rule.triggerDiscountMode === "PERCENTAGE"
             ? rule.triggerDiscountMode
             : "NONE",
+
         triggerDiscountValue:
           rule.triggerDiscountMode === "NONE"
             ? 0
             : Math.max(
                 0,
-                parseFloat(String(rule.triggerDiscountValue || "").replace(",", ".")) ||
-                  0,
+                parseFloat(
+                  String(rule.triggerDiscountValue || "").replace(",", "."),
+                ) || 0,
               ),
+
         triggerDiscountLabel: String(rule.triggerDiscountLabel || "").trim(),
+
         accessories: (rule.accessories || [])
           .map((accessory) => {
             const discountAmount = parseFloat(
@@ -236,27 +203,9 @@ function sanitizeConfig(rawConfig) {
             };
           })
           .filter((accessory) => accessory.sku),
-          
       }))
       .filter(
         (rule) => rule.name && rule.triggerSku && rule.accessories.length > 0,
-      ),
-
-    standaloneDiscounts: config.standaloneDiscounts
-      .map((item) => ({
-        active: Boolean(item.active),
-        sku: String(item.sku || "").trim(),
-        discountMode: item.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
-        discountAmount: parseFloat(
-          String(item.discountAmount || "").replace(",", "."),
-        ),
-        message: String(item.message || "").trim() || "Promo discount",
-      }))
-      .filter(
-        (item) =>
-          item.sku &&
-          Number.isFinite(item.discountAmount) &&
-          item.discountAmount > 0,
       ),
   };
 }
@@ -296,13 +245,14 @@ async function findOrCreateBundleDiscount(admin) {
       discount?.__typename === "DiscountAutomaticApp" &&
       discount.title === TITLE
     ) {
-      console.log("FOUND DISCOUNT", JSON.stringify(node, null, 2));
+      const rawConfig =
+        node.metafield?.jsonValue || node.expandedMetafield?.jsonValue;
 
       return {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
-        config: normalizeConfig(node.metafield?.jsonValue || node.expandedMetafield?.jsonValue),
+        config: normalizeConfig(rawConfig),
       };
     }
   }
@@ -326,7 +276,7 @@ async function findOrCreateBundleDiscount(admin) {
             namespace: EXPANDED_NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify({ rules: [], standaloneDiscounts: [] }),
+            value: JSON.stringify({ rules: [] }),
           },
         ],
       },
@@ -351,7 +301,7 @@ async function findOrCreateBundleDiscount(admin) {
     id: newDiscountId,
     title: TITLE,
     status: createPayload?.automaticAppDiscount?.status || "",
-    config: { rules: [], standaloneDiscounts: [] },
+    config: { rules: [] },
   };
 }
 
@@ -376,7 +326,7 @@ export async function loader({ request }) {
       error: err.message || "Failed to load bundle discount settings.",
       title: TITLE,
       status: "",
-      config: { rules: [], standaloneDiscounts: [] },
+      config: { rules: [] },
     };
   }
 }
@@ -402,20 +352,15 @@ export async function action({ request }) {
 
     const cleanConfig = sanitizeConfig(parsed);
     const discount = await findOrCreateBundleDiscount(admin);
+    const payloadString = JSON.stringify(cleanConfig);
 
+    console.log("BUNDLE SAVE TARGET DISCOUNT:", discount.id, discount.title);
     console.log(
-      "BUNDLE SAVE TARGET DISCOUNT:",
-      discount.id,
-      discount.title,
-      discount.status,
+      "BUNDLE ONLY CONFIG SIZE:",
+      Buffer.byteLength(payloadString, "utf8"),
+      "bytes",
     );
-
-   console.log(
-    "ABOUT TO WRITE METAFIELD",
-    discount.id,
-    EXPANDED_NAMESPACE,
-    KEY,
-  );
+    console.log("BUNDLE RULE COUNT:", cleanConfig.rules?.length || 0);
 
     const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
       variables: {
@@ -425,7 +370,7 @@ export async function action({ request }) {
             namespace: EXPANDED_NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify(cleanConfig),
+            value: payloadString,
           },
         ],
       },
@@ -433,9 +378,10 @@ export async function action({ request }) {
 
     const metafieldsJson = await metafieldsRes.json();
     console.log(
-      "METAFIELD WRITE RESULT",
+      "BUNDLE METAFIELD WRITE RESULT",
       JSON.stringify(metafieldsJson, null, 2),
     );
+
     const payload = metafieldsJson?.data?.metafieldsSet;
     const userErrors = payload?.userErrors || [];
 
@@ -509,49 +455,43 @@ function validateConfig(config) {
         seenSkus.add(normalizedSku);
       }
 
-      if (discountRaw && (!Number.isFinite(discountAmount) || discountAmount < 0)) {
+      if (
+        discountRaw &&
+        (!Number.isFinite(discountAmount) || discountAmount < 0)
+      ) {
         errors.push(
           `Rule ${ruleIndex + 1}, Accessory ${accessoryIndex + 1}: Discount amount must be 0 or more.`,
         );
       }
     });
-  });
-
-  const seenStandaloneSkus = new Set();
-
-  (config.standaloneDiscounts || []).forEach((item, index) => {
-    const sku = String(item.sku || "").trim();
-    const discountAmount = parseFloat(
-      String(item.discountAmount || "").replace(",", "."),
-    );
-
-    if (!sku) {
-      errors.push(`Standalone discount ${index + 1}: SKU is required.`);
-    }
-
-    if (sku) {
-      const normalizedSku = sku.toUpperCase();
-      if (seenStandaloneSkus.has(normalizedSku)) {
-        errors.push(
-          `Standalone discount ${index + 1}: Duplicate SKU "${sku}" found.`,
-        );
-      }
-      seenStandaloneSkus.add(normalizedSku);
-    }
-
-    if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
-      errors.push(
-        `Standalone discount ${index + 1}: Discount amount must be greater than 0.`,
-      );
-    }
 
     if (
-      item.discountMode === "PERCENTAGE" &&
-      (discountAmount <= 0 || discountAmount > 100)
+      rule.triggerDiscountMode !== "NONE" &&
+      rule.triggerDiscountMode !== "FIXED" &&
+      rule.triggerDiscountMode !== "PERCENTAGE"
     ) {
-      errors.push(
-        `Standalone discount ${index + 1}: Percentage must be between 1 and 100.`,
+      errors.push(`Rule ${ruleIndex + 1}: Invalid trigger discount type.`);
+    }
+
+    if (rule.triggerDiscountMode !== "NONE") {
+      const triggerDiscount = parseFloat(
+        String(rule.triggerDiscountValue || "").replace(",", "."),
       );
+
+      if (!Number.isFinite(triggerDiscount) || triggerDiscount <= 0) {
+        errors.push(
+          `Rule ${ruleIndex + 1}: Trigger discount value must be greater than 0.`,
+        );
+      }
+
+      if (
+        rule.triggerDiscountMode === "PERCENTAGE" &&
+        (triggerDiscount <= 0 || triggerDiscount > 100)
+      ) {
+        errors.push(
+          `Rule ${ruleIndex + 1}: Trigger percentage must be between 1 and 100.`,
+        );
+      }
     }
   });
 
@@ -562,8 +502,6 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
   const [config, setConfig] = useState(normalizeConfig(initialConfig));
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedRules, setCollapsedRules] = useState({});
-  const [collapsedStandaloneDiscounts, setCollapsedStandaloneDiscounts] =
-    useState({});
 
   useEffect(() => {
     setConfig(normalizeConfig(initialConfig));
@@ -583,6 +521,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
           rule.name,
           rule.triggerSku,
           rule.message,
+          rule.triggerDiscountLabel,
           ...(rule.accessories || []).flatMap((accessory) => [
             accessory.sku,
             accessory.label,
@@ -688,59 +627,6 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
     });
   }
 
-  function addStandaloneDiscount() {
-    setConfig((prev) => ({
-      ...prev,
-      standaloneDiscounts: [
-        emptyStandaloneDiscount(),
-        ...(prev.standaloneDiscounts || []),
-      ],
-    }));
-  }
-
-  function updateStandaloneDiscount(index, updates) {
-    setConfig((prev) => {
-      const next = structuredClone(prev);
-      next.standaloneDiscounts[index] = {
-        ...next.standaloneDiscounts[index],
-        ...updates,
-      };
-      return next;
-    });
-  }
-
-  function removeStandaloneDiscount(index) {
-    setConfig((prev) => ({
-      ...prev,
-      standaloneDiscounts: (prev.standaloneDiscounts || []).filter(
-        (_, itemIndex) => itemIndex !== index,
-      ),
-    }));
-  }
-
-  function toggleStandaloneDiscount(index) {
-    setCollapsedStandaloneDiscounts((prev) => ({
-      ...prev,
-      [index]: !prev[index],
-    }));
-  }
-
-  function expandAllStandaloneDiscounts() {
-    const next = {};
-    (config.standaloneDiscounts || []).forEach((_, index) => {
-      next[index] = false;
-    });
-    setCollapsedStandaloneDiscounts(next);
-  }
-
-  function collapseAllStandaloneDiscounts() {
-    const next = {};
-    (config.standaloneDiscounts || []).forEach((_, index) => {
-      next[index] = true;
-    });
-    setCollapsedStandaloneDiscounts(next);
-  }
-
   return (
     <Form method="post">
       <input type="hidden" name="_action" value="save" />
@@ -752,7 +638,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
             <InlineStack align="space-between" blockAlign="end" gap="300" wrap>
               <Box minWidth="320px">
                 <TextField
-                  label="Search rules"
+                  label="Search bundle rules"
                   value={searchTerm}
                   onChange={setSearchTerm}
                   placeholder="Search by rule name, trigger SKU, accessory SKU or label"
@@ -805,6 +691,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                       <Text as="h3" variant="headingMd">
                         {rule.name || `Rule ${ruleIndex + 1}`}
                       </Text>
+
                       <Badge tone={rule.active ? "success" : undefined}>
                         {rule.active ? "Active" : "Inactive"}
                       </Badge>
@@ -820,9 +707,11 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                     <Button onClick={() => toggleRule(ruleIndex)}>
                       {isCollapsed ? "Expand" : "Collapse"}
                     </Button>
+
                     <Button onClick={() => duplicateRule(ruleIndex)}>
                       Duplicate
                     </Button>
+
                     <Button
                       tone="critical"
                       variant="secondary"
@@ -886,61 +775,73 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                       autoComplete="off"
                     />
 
-                      <Divider />
+                    <Divider />
 
-                      <Text as="h4" variant="headingSm">
-                        Trigger product discount
-                      </Text>
+                    <Text as="h4" variant="headingSm">
+                      Trigger product discount
+                    </Text>
 
-                      <InlineStack gap="300" wrap>
-                        <Box minWidth="220px">
-                          <Select
-                            label="Trigger discount type"
-                            options={[
-                              { label: "None", value: "NONE" },
-                              { label: "Fixed amount", value: "FIXED" },
-                              { label: "Percentage", value: "PERCENTAGE" },
-                            ]}
-                            value={rule.triggerDiscountMode || "NONE"}
-                            onChange={(value) =>
-                              updateRule(ruleIndex, { triggerDiscountMode: value })
-                            }
-                          />
-                        </Box>
+                    <InlineStack gap="300" wrap>
+                      <Box minWidth="220px">
+                        <Select
+                          label="Trigger discount type"
+                          options={[
+                            { label: "None", value: "NONE" },
+                            { label: "Fixed amount", value: "FIXED" },
+                            { label: "Percentage", value: "PERCENTAGE" },
+                          ]}
+                          value={rule.triggerDiscountMode || "NONE"}
+                          onChange={(value) =>
+                            updateRule(ruleIndex, {
+                              triggerDiscountMode: value,
+                            })
+                          }
+                        />
+                      </Box>
 
-                        <Box minWidth="180px">
-                          <TextField
-                            label={
-                              rule.triggerDiscountMode === "PERCENTAGE"
-                                ? "Trigger discount percentage"
-                                : "Trigger discount amount"
-                            }
-                            type="number"
-                            value={rule.triggerDiscountValue || ""}
-                            disabled={(rule.triggerDiscountMode || "NONE") === "NONE"}
-                            onChange={(value) =>
-                              updateRule(ruleIndex, { triggerDiscountValue: value })
-                            }
-                            placeholder={
-                              rule.triggerDiscountMode === "PERCENTAGE" ? "e.g. 10" : "e.g. 540"
-                            }
-                            autoComplete="off"
-                          />
-                        </Box>
+                      <Box minWidth="180px">
+                        <TextField
+                          label={
+                            rule.triggerDiscountMode === "PERCENTAGE"
+                              ? "Trigger discount percentage"
+                              : "Trigger discount amount"
+                          }
+                          type="number"
+                          value={rule.triggerDiscountValue || ""}
+                          disabled={
+                            (rule.triggerDiscountMode || "NONE") === "NONE"
+                          }
+                          onChange={(value) =>
+                            updateRule(ruleIndex, {
+                              triggerDiscountValue: value,
+                            })
+                          }
+                          placeholder={
+                            rule.triggerDiscountMode === "PERCENTAGE"
+                              ? "e.g. 10"
+                              : "e.g. 540"
+                          }
+                          autoComplete="off"
+                        />
+                      </Box>
 
-                        <Box minWidth="260px">
-                          <TextField
-                            label="Trigger discount label"
-                            value={rule.triggerDiscountLabel || ""}
-                            disabled={(rule.triggerDiscountMode || "NONE") === "NONE"}
-                            onChange={(value) =>
-                              updateRule(ruleIndex, { triggerDiscountLabel: value })
-                            }
-                            placeholder="e.g. Vuvuzela Bundle 1 Discount"
-                            autoComplete="off"
-                          />
-                        </Box>
-                      </InlineStack>
+                      <Box minWidth="260px">
+                        <TextField
+                          label="Trigger discount label"
+                          value={rule.triggerDiscountLabel || ""}
+                          disabled={
+                            (rule.triggerDiscountMode || "NONE") === "NONE"
+                          }
+                          onChange={(value) =>
+                            updateRule(ruleIndex, {
+                              triggerDiscountLabel: value,
+                            })
+                          }
+                          placeholder="e.g. Vuvuzela Bundle 1 Discount"
+                          autoComplete="off"
+                        />
+                      </Box>
+                    </InlineStack>
 
                     <Checkbox
                       label="Active"
@@ -956,6 +857,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
                       <Text as="h4" variant="headingSm">
                         Accessories
                       </Text>
+
                       <Button onClick={() => addAccessory(ruleIndex)}>
                         Add accessory
                       </Button>
@@ -1051,179 +953,6 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
           );
         })}
 
-        <Card>
-          <BlockStack gap="400">
-            <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
-              <BlockStack gap="100">
-                <Text as="h2" variant="headingMd">
-                  Standalone Product Discounts
-                </Text>
-                <Text as="p" variant="bodySm" tone="subdued">
-                  Discount products directly by SKU without needing a trigger product.
-                </Text>
-              </BlockStack>
-
-              <InlineStack gap="200">
-                <Button onClick={expandAllStandaloneDiscounts}>
-                  Expand all
-                </Button>
-                <Button onClick={collapseAllStandaloneDiscounts}>
-                  Collapse all
-                </Button>
-                <Button onClick={addStandaloneDiscount}>
-                  Add standalone discount
-                </Button>
-                <Button
-                  submit
-                  variant="primary"
-                  loading={isSubmitting}
-                  disabled={validationErrors.length > 0}
-                >
-                  Save rules
-                </Button>
-              </InlineStack>
-            </InlineStack>
-
-            {(config.standaloneDiscounts || []).length === 0 ? (
-              <Banner title="No standalone discounts yet">
-                <Text as="p">
-                  Add a SKU here when you want that product to receive its own discount automatically.
-                </Text>
-              </Banner>
-            ) : null}
-
-            <BlockStack gap="300">
-              {(config.standaloneDiscounts || []).map((item, index) => {
-                const isCollapsed = Boolean(
-                  collapsedStandaloneDiscounts[index],
-                );
-
-                return (
-                  <Box
-                    key={`standalone-${index}`}
-                    padding="300"
-                    background="bg-surface-secondary"
-                    borderRadius="300"
-                  >
-                    <BlockStack gap="300">
-                      <InlineStack align="space-between" blockAlign="center">
-                        <InlineStack gap="200" blockAlign="center">
-                          <Text as="p" variant="bodyMd" fontWeight="semibold">
-                            Standalone discount {index + 1}
-                          </Text>
-                          <Badge tone={item.active ? "success" : undefined}>
-                            {item.active ? "Active" : "Inactive"}
-                          </Badge>
-                          {item.sku ? (
-                            <Text as="p" variant="bodySm" tone="subdued">
-                              SKU: {item.sku}
-                            </Text>
-                          ) : null}
-                        </InlineStack>
-
-                        <InlineStack gap="200">
-                          <Button onClick={() => toggleStandaloneDiscount(index)}>
-                            {isCollapsed ? "Expand" : "Collapse"}
-                          </Button>
-
-                          <Button
-                            tone="critical"
-                            variant="plain"
-                            onClick={() => removeStandaloneDiscount(index)}
-                          >
-                            Remove
-                          </Button>
-                        </InlineStack>
-                      </InlineStack>
-
-                      {!isCollapsed ? (
-                        <BlockStack gap="300">
-                          <InlineStack gap="300" wrap>
-                            <Box minWidth="220px">
-                              <TextField
-                                label="SKU"
-                                value={item.sku}
-                                onChange={(value) =>
-                                  updateStandaloneDiscount(index, { sku: value })
-                                }
-                                placeholder="e.g. PROMO-SKU-1"
-                                autoComplete="off"
-                              />
-                            </Box>
-
-                            <Box minWidth="180px">
-                              <Select
-                                label="Discount type"
-                                options={[
-                                  { label: "Fixed amount", value: "FIXED" },
-                                  { label: "Percentage", value: "PERCENTAGE" },
-                                ]}
-                                value={item.discountMode || "FIXED"}
-                                onChange={(value) =>
-                                  updateStandaloneDiscount(index, {
-                                    discountMode: value,
-                                  })
-                                }
-                              />
-                            </Box>
-
-                            <Box minWidth="180px">
-                              <TextField
-                                label={
-                                  item.discountMode === "PERCENTAGE"
-                                    ? "Discount percentage"
-                                    : "Discount amount"
-                                }
-                                type="number"
-                                value={item.discountAmount}
-                                onChange={(value) =>
-                                  updateStandaloneDiscount(index, {
-                                    discountAmount: value,
-                                  })
-                                }
-                                placeholder={
-                                  item.discountMode === "PERCENTAGE"
-                                    ? "e.g. 10"
-                                    : "e.g. 101"
-                                }
-                                autoComplete="off"
-                              />
-                            </Box>
-
-                            <Box minWidth="260px">
-                              <TextField
-                                label="Message"
-                                value={item.message}
-                                onChange={(value) =>
-                                  updateStandaloneDiscount(index, {
-                                    message: value,
-                                  })
-                                }
-                                placeholder="e.g. Promo discount"
-                                autoComplete="off"
-                              />
-                            </Box>
-                          </InlineStack>
-
-                          <Checkbox
-                            label="Active"
-                            checked={Boolean(item.active)}
-                            onChange={(checked) =>
-                              updateStandaloneDiscount(index, {
-                                active: checked,
-                              })
-                            }
-                          />
-                        </BlockStack>
-                      ) : null}
-                    </BlockStack>
-                  </Box>
-                );
-              })}
-            </BlockStack>
-          </BlockStack>
-        </Card>
-
         <InlineStack align="space-between" blockAlign="center">
           <Button onClick={addRule}>Add bundle rule</Button>
 
@@ -1233,7 +962,7 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
             loading={isSubmitting}
             disabled={validationErrors.length > 0}
           >
-            Save rules
+            Save bundle rules
           </Button>
         </InlineStack>
       </BlockStack>
@@ -1251,7 +980,7 @@ export default function BundleDiscountsPage() {
   return (
     <Page
       title="Bundle Discount Rules"
-      subtitle="Manage the automatic discount configuration used by your cart lines discount function."
+      subtitle="Manage bundle-only automatic discount configuration."
     >
       <Layout>
         <Layout.Section>
@@ -1271,7 +1000,8 @@ export default function BundleDiscountsPage() {
             {actionData?.ok && !actionData.error ? (
               <Banner tone="success" title="Bundle discount rules saved">
                 <Text as="p">
-                  Your automatic discount configuration has been updated.
+                  Your bundle-only automatic discount configuration has been
+                  updated.
                 </Text>
               </Banner>
             ) : null}

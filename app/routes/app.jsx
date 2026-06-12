@@ -28,6 +28,7 @@ export default function App() {
           <s-link href="/app/price-guard">Price Guard</s-link>
           <s-link href="/app/bundle-discounts">Bundle Discounts</s-link>
           <s-link href="/app/bundler-rules">Bundler Rules</s-link>
+          <s-link href="/app/standalone-discounts">Standalone Discounts</s-link>
           <s-link href="/app/upsells">Upsell Rules</s-link>
           <s-link href="/app/promo-display">Promo Display</s-link>
           <s-link href="/app/stock-sync">Stock Availability Sync</s-link>
