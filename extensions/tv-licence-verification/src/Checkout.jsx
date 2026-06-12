@@ -14,6 +14,8 @@ function Extension() {
   const [emailAddress, setEmailAddress] = useState('');
   const [residentialAddress, setResidentialAddress] = useState('');
 
+  const getValue = (value) => String(value || '');
+
   return (
     <s-stack gap="base">
       <s-banner heading="TV licence verification" tone="info">
@@ -25,40 +27,40 @@ function Extension() {
       <s-text-field
         label="Full Name and Surname"
         value={fullName}
-        onInput={(event) => setFullName(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setFullName(getValue(value))}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
         value={idNumber}
-        onInput={(event) => setIdNumber(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setIdNumber(getValue(value))}
       />
 
       <s-text-field
         label="TV Licence Number (if available)"
         value={tvLicenceNumber}
-        onInput={(event) => setTvLicenceNumber(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setTvLicenceNumber(getValue(value))}
       />
 
       <s-text-field
         label="Contact Number"
         value={contactNumber}
-        onInput={(event) => setContactNumber(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setContactNumber(getValue(value))}
       />
 
       <s-text-field
         label="Email Address"
         value={emailAddress}
-        onInput={(event) => setEmailAddress(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setEmailAddress(getValue(value))}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
         value={residentialAddress}
-        onInput={(event) => setResidentialAddress(String(event.currentTarget?.value || ''))}
+        onInput={(value) => setResidentialAddress(getValue(value))}
       />
 
-      <s-text>
+      <s-text color="subdued">
         Copy of TV Licence / Proof of Payment upload will be added next.
       </s-text>
     </s-stack>

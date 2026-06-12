@@ -1,4 +1,5 @@
 api_version = "2025-10"
+uid = "31325b60-fd02-a042-ae7c-e2733d4dcfded3e83bdc"
 
 [[extensions]]
 name = "tv-licence-verification"
