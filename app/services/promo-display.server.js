@@ -2,6 +2,16 @@ import db from "../db.server";
 
 const NAMESPACE = "custom";
 
+const PROMO_KEYS = [
+  "promo_display_enabled",
+  "promo_display_type",
+  "promo_discount_amount",
+  "promo_discount_percent",
+  "promo_label",
+  "promo_source",
+  "promo_priority",
+];
+
 const FIND_VARIANT_BY_SKU_QUERY = `#graphql
   query FindVariantBySku($query: String!) {
     productVariants(first: 1, query: $query) {
@@ -20,6 +30,22 @@ const FIND_VARIANT_BY_SKU_QUERY = `#graphql
 const METAFIELDS_SET_MUTATION = `#graphql
   mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+const METAFIELDS_DELETE_MUTATION = `#graphql
+  mutation MetafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
+    metafieldsDelete(metafields: $metafields) {
+      deletedMetafields {
+        ownerId
+        namespace
+        key
+      }
       userErrors {
         field
         message
@@ -57,11 +83,13 @@ export function getPromoDisplayValues(rule) {
   return {
     promo_display_enabled: enabled ? "true" : "false",
     promo_display_type: rule?.discountType || "",
-    promo_discount_amount: rule?.discountAmount ? String(rule.discountAmount) : "0",
-    promo_discount_percent: rule?.discountPercent ? String(rule.discountPercent) : "0",
+    promo_discount_amount:
+      rule?.discountAmount != null ? String(rule.discountAmount) : "0",
+    promo_discount_percent:
+      rule?.discountPercent != null ? String(rule.discountPercent) : "0",
     promo_label: rule?.label || "",
     promo_source: rule?.source || "",
-    promo_priority: rule?.priority ? String(rule.priority) : "100",
+    promo_priority: rule?.priority != null ? String(rule.priority) : "100",
   };
 }
 
@@ -138,6 +166,31 @@ export async function syncPromoDisplayMetafields(admin, rule) {
   return true;
 }
 
+export async function deletePromoDisplayMetafields(admin, variantId) {
+  if (!variantId) {
+    throw new Error("Cannot delete promo display metafields without variantId");
+  }
+
+  const response = await admin.graphql(METAFIELDS_DELETE_MUTATION, {
+    variables: {
+      metafields: PROMO_KEYS.map((key) => ({
+        ownerId: variantId,
+        namespace: NAMESPACE,
+        key,
+      })),
+    },
+  });
+
+  const json = await response.json();
+  const errors = json?.data?.metafieldsDelete?.userErrors || [];
+
+  if (errors.length > 0) {
+    throw new Error(errors.map((error) => error.message).join(", "));
+  }
+
+  return true;
+}
+
 export async function upsertPromoDisplayRule({
   admin,
   shop,
@@ -153,14 +206,16 @@ export async function upsertPromoDisplayRule({
   startsAt = null,
   endsAt = null,
 }) {
-  const variant = await findVariantBySku(admin, sku);
+  const cleanSku = String(sku || "").trim();
+
+  const variant = await findVariantBySku(admin, cleanSku);
 
   const rule = await db.promoDisplayRule.upsert({
     where: {
       shop_source_sku: {
         shop,
         source,
-        sku: sku.trim(),
+        sku: cleanSku,
       },
     },
     update: {
@@ -180,7 +235,7 @@ export async function upsertPromoDisplayRule({
       shop,
       source,
       sourceId,
-      sku: sku.trim(),
+      sku: cleanSku,
       discountType,
       discountAmount,
       discountPercent,
@@ -231,9 +286,12 @@ export async function disablePromoDisplayRule({ admin, shop, id }) {
   await syncPromoDisplayMetafields(admin, disabledRule);
 
   return db.promoDisplayRule.update({
-    where: { id },
+    where: { id: rule.id },
     data: {
       isEnabled: false,
+      discountAmount: 0,
+      discountPercent: 0,
+      label: "",
     },
   });
 }
@@ -247,16 +305,7 @@ export async function deletePromoDisplayRule({ admin, shop, id }) {
     throw new Error("Promo display rule not found");
   }
 
-  await syncPromoDisplayMetafields(admin, {
-    ...rule,
-    isEnabled: false,
-    discountAmount: 0,
-    discountPercent: 0,
-    label: "",
-    source: "",
-    discountType: "",
-    priority: 100,
-  });
+  await deletePromoDisplayMetafields(admin, rule.variantId);
 
   await db.promoDisplayRule.delete({
     where: { id: rule.id },
