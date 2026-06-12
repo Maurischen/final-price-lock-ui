@@ -1,0 +1,14 @@
+api_version = "2025-10"
+
+[[extensions]]
+name = "tv-licence-verification"
+handle = "tv-licence-verification"
+type = "ui_extension"
+
+[[extensions.targeting]]
+target = "purchase.checkout.block.render"
+module = "./src/Checkout.jsx"
+
+[extensions.capabilities]
+api_access = true
+network_access = true

@@ -3,10 +3,11 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "target": "ES2020",
-    "checkJs": true,
+    "moduleResolution": "bundler",
     "allowJs": true,
-    "moduleResolution": "node",
+    "checkJs": true,
     "esModuleInterop": true,
+    "ignoreDeprecations": "6.0"
   },
   "include": ["./src", "./shopify.d.ts"]
 }

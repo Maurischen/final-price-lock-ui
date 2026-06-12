@@ -6,57 +6,51 @@ export default function extension() {
 }
 
 function CollectorFields() {
+  /**
+   * @param {string} key
+   * @param {string} value
+   */
+  async function updateAttribute(key, value) {
+    await shopify.applyAttributeChange({
+      type: 'updateAttribute',
+      key,
+      value,
+    });
+  }
+
   return (
-    <s-stack spacing="base">
-      <s-text emphasis="bold">Who will collect this order?</s-text>
+    <s-stack gap="base">
+      <s-text>Who will collect this order?</s-text>
 
       <s-text-field
         label="Name of person collecting"
         required
-        onChange={async (event) => {
-          const value = event?.target?.value ?? '';
-          await shopify.applyAttributeChange({
-            type: 'updateAttribute',
-            key: 'collector_name',
-            value,
-          });
+        onInput={async (value) => {
+          await updateAttribute('collector_name', String(value || ''));
         }}
       />
 
       <s-text-field
         label="Collector contact number"
-        type="tel"
         required
-        onChange={async (event) => {
-          const value = event?.target?.value ?? '';
-          await shopify.applyAttributeChange({
-            type: 'updateAttribute',
-            key: 'collector_phone',
-            value,
-          });
+        onInput={async (value) => {
+          await updateAttribute('collector_phone', String(value || ''));
         }}
       />
 
       <s-divider />
 
-      <s-text size="small" appearance="subdued">
+      <s-text color="subdued">
         For store collection, the person collecting may be asked to present valid identification
-        (and/or proof of order) before the order is released.
+        and/or proof of order before the order is released.
       </s-text>
 
       <s-checkbox
-        required
-        onChange={async (event) => {
-          const checked = Boolean(event?.target?.checked);
-          await shopify.applyAttributeChange({
-            type: 'updateAttribute',
-            key: 'collector_id_acknowledged',
-            value: checked ? 'yes' : 'no',
-          });
+        label="I understand the person collecting will be asked for identification."
+        onChange={async () => {
+          await updateAttribute('collector_id_acknowledged', 'yes');
         }}
-      >
-        I understand the person collecting will be asked for identification.
-      </s-checkbox>
+      />
     </s-stack>
   );
 }
