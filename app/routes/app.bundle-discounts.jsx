@@ -16,7 +16,6 @@ import {
   Banner,
   BlockStack,
   InlineStack,
-  Divider,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
@@ -74,9 +73,13 @@ const METAFIELDS_SET_MUTATION = `#graphql
   }
 `;
 
+function createRuleId() {
+  return `rule-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function emptyRule() {
   return {
-    id: crypto.randomUUID(),
+    id: createRuleId(),
     name: "",
     triggerSku: "",
     accessorySku: "",
@@ -92,7 +95,7 @@ function emptyRule() {
 
 function normalizeRule(rule = {}) {
   return {
-    id: rule.id || crypto.randomUUID(),
+    id: rule.id || createRuleId(),
     name: rule.name || "",
     triggerSku: rule.triggerSku || "",
     accessorySku: rule.accessorySku || "",
@@ -133,7 +136,7 @@ function normalizeConfig(rawValue) {
 
 function sanitizeRule(rule) {
   return {
-    id: rule.id || crypto.randomUUID(),
+    id: rule.id || createRuleId(),
     name: String(rule.name || "").trim(),
     triggerSku: String(rule.triggerSku || "").trim(),
     accessorySku: String(rule.accessorySku || "").trim(),
@@ -338,6 +341,7 @@ export default function BundleDiscountsPage() {
                         </Text>
 
                         <Button
+                          type="button"
                           tone="critical"
                           variant="plain"
                           onClick={() => removeRule(index)}
@@ -373,7 +377,7 @@ export default function BundleDiscountsPage() {
                         />
                       </InlineStack>
 
-                      <Divider />
+                      <div style={{ borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
 
                       <Text as="h3" variant="headingSm">
                         Accessory discount
@@ -412,7 +416,7 @@ export default function BundleDiscountsPage() {
                         autoComplete="off"
                       />
 
-                      <Divider />
+                      <div style={{ borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
 
                       <Text as="h3" variant="headingSm">
                         Trigger product discount
