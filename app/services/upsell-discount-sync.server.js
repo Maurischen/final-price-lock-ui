@@ -399,7 +399,12 @@ async function upsellRuleToBundleRule(admin, rule) {
     if (accessory) accessories.push(accessory);
   }
 
-  if (!accessories.length) return null;
+  const hasTriggerDiscount =
+  rule.triggerDiscountMode &&
+  rule.triggerDiscountMode !== "NONE" &&
+  Number(rule.triggerDiscountValue || 0) > 0;
+
+  if (!accessories.length && !hasTriggerDiscount) return null;
 
    return {
     id: rule.id,
