@@ -44,6 +44,33 @@ function Extension() {
     return numericProductId && tvVerificationProductIds.has(numericProductId);
   });
 
+  async function saveForm() {
+    if (!shopify.applyMetafieldChange) return;
+
+    const payload = {
+      fullName,
+      idNumber,
+      tvLicenceNumber,
+      contactNumber,
+      emailAddress,
+      residentialAddress,
+    };
+
+    const result = await shopify.applyMetafieldChange({
+      type: 'updateCartMetafield',
+      metafield: {
+        namespace: '$app',
+        key: 'tv_licence_verification',
+        type: 'json',
+        value: JSON.stringify(payload),
+      },
+    });
+
+    if (result?.type === 'error') {
+      console.error('Failed to save TV licence verification form', result.message);
+    }
+  }
+
   if (!hasTvInCart) {
     return null;
   }
@@ -60,36 +87,42 @@ function Extension() {
         label="Full Name and Surname"
         value={fullName}
         onInput={(value) => setFullName(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
         value={idNumber}
         onInput={(value) => setIdNumber(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text-field
         label="TV Licence Number (if available)"
         value={tvLicenceNumber}
         onInput={(value) => setTvLicenceNumber(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text-field
         label="Contact Number"
         value={contactNumber}
         onInput={(value) => setContactNumber(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text-field
         label="Email Address"
         value={emailAddress}
         onInput={(value) => setEmailAddress(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
         value={residentialAddress}
         onInput={(value) => setResidentialAddress(getValue(value))}
+        onBlur={saveForm}
       />
 
       <s-text color="subdued">

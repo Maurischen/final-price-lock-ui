@@ -17,3 +17,7 @@ network_access = true
 [[extensions.metafields]]
 namespace = "custom"
 key = "requires_tv_licence_verification"
+
+[[extensions.metafields]]
+namespace = "$app"
+key = "tv_licence_verification"
