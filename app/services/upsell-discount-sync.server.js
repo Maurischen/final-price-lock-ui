@@ -463,6 +463,9 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
       : [],
   };
 
+  console.log("BUNDLE DISCOUNT ID:", discount.id);
+  console.log("BUNDLE CLEAN CONFIG:", JSON.stringify(cleanConfig, null, 2));
+
   const updateRes = await admin.graphql(UPDATE_MUTATION, {
     variables: {
       id: discount.id,
