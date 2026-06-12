@@ -483,6 +483,7 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
   });
 
   const metafieldsJson = await metafieldsRes.json();
+  console.log("METAFIELDS SET RESPONSE:", JSON.stringify(metafieldsJson, null, 2));
   const metafieldsPayload = metafieldsJson?.data?.metafieldsSet;
   const userErrors = metafieldsPayload?.userErrors || [];
 
