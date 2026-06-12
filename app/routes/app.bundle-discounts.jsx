@@ -173,19 +173,21 @@ function sanitizeConfig(rawConfig) {
         ratio: Math.max(1, parseInt(rule.ratio, 10) || 1),
         message: rule.message.trim(),
         accessories: (rule.accessories || [])
-          .map((accessory) => ({
-            sku: String(accessory.sku || "").trim(),
-            discountAmount: parseFloat(
+          .map((accessory) => {
+            const discountAmount = parseFloat(
               String(accessory.discountAmount || "").replace(",", "."),
-            ),
-            label: String(accessory.label || "").trim(),
-          }))
-          .filter(
-            (accessory) =>
-              accessory.sku &&
-              Number.isFinite(accessory.discountAmount) &&
-              accessory.discountAmount > 0,
-          ),
+            );
+
+            return {
+              sku: String(accessory.sku || "").trim(),
+              discountAmount: Number.isFinite(discountAmount)
+                ? Math.max(0, discountAmount)
+                : 0,
+              label: String(accessory.label || "").trim(),
+            };
+          })
+          .filter((accessory) => accessory.sku),
+          
       }))
       .filter(
         (rule) => rule.name && rule.triggerSku && rule.accessories.length > 0,
@@ -421,9 +423,8 @@ function validateConfig(config) {
 
     accessories.forEach((accessory, accessoryIndex) => {
       const sku = String(accessory.sku || "").trim();
-      const discountAmount = parseFloat(
-        String(accessory.discountAmount || "").replace(",", "."),
-      );
+      const discountRaw = String(accessory.discountAmount || "").trim();
+      const discountAmount = parseFloat(discountRaw.replace(",", "."));
 
       if (!sku) {
         errors.push(
@@ -441,9 +442,9 @@ function validateConfig(config) {
         seenSkus.add(normalizedSku);
       }
 
-      if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+      if (discountRaw && (!Number.isFinite(discountAmount) || discountAmount < 0)) {
         errors.push(
-          `Rule ${ruleIndex + 1}, Accessory ${accessoryIndex + 1}: Discount amount must be greater than 0.`,
+          `Rule ${ruleIndex + 1}, Accessory ${accessoryIndex + 1}: Discount amount must be 0 or more.`,
         );
       }
     });
