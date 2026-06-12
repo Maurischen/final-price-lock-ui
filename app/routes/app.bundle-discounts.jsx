@@ -401,6 +401,13 @@ export async function action({ request }) {
     const cleanConfig = sanitizeConfig(parsed);
     const discount = await findOrCreateBundleDiscount(admin);
 
+    console.log(
+      "BUNDLE SAVE TARGET DISCOUNT:",
+      discount.id,
+      discount.title,
+      discount.status,
+    );
+
     const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
       variables: {
         metafields: [
