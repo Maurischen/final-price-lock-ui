@@ -473,6 +473,24 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
   console.log("BUNDLE DISCOUNT ID:", discount.id);
   console.log("BUNDLE CLEAN CONFIG:", JSON.stringify(cleanConfig, null, 2));
 
+  const payloadString = JSON.stringify(cleanConfig);
+
+  console.log(
+    "BUNDLE CONFIG SIZE:",
+    Buffer.byteLength(payloadString, "utf8"),
+    "bytes"
+  );
+
+  console.log(
+    "RULE COUNT:",
+    cleanConfig.rules?.length || 0
+  );
+
+  console.log(
+    "STANDALONE COUNT:",
+    cleanConfig.standaloneDiscounts?.length || 0
+  );
+
   const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
     variables: {
       metafields: [
