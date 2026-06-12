@@ -374,13 +374,11 @@ export default function PromoDisplayPage() {
                           `Delete ${selectedIds.length} selected promo display rule(s)?`,
                         )
                       ) {
-                        submit(
-                          {
-                            _intent: "bulkDelete",
-                            ids: selectedIds.join(","),
-                          },
-                          { method: "post" },
-                        );
+                        const formData = new FormData();
+                        formData.append("_intent", "bulkDelete");
+                        formData.append("ids", selectedIds.join(","));
+
+                        submit(formData, { method: "post" });
                       }
                     }}
                   >
