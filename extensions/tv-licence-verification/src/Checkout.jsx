@@ -18,7 +18,10 @@ const EMPTY_FORM = {
 function Extension() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
+
   const hasLoadedSavedValues = useRef(false);
+  const formRef = useRef(EMPTY_FORM);
+  const hasTvInCartRef = useRef(false);
 
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
@@ -57,6 +60,9 @@ function Extension() {
     return numericProductId && tvVerificationProductIds.has(numericProductId);
   });
 
+  formRef.current = form;
+  hasTvInCartRef.current = hasTvInCart;
+
   const savedFormEntry = appMetafields.find((entry) => {
     return (
       entry?.target?.type === 'cart' &&
@@ -74,14 +80,17 @@ function Extension() {
     try {
       const saved = JSON.parse(savedFormJson);
 
-      setForm({
+      const loadedForm = {
         fullName: String(saved?.fullName || ''),
         idNumber: String(saved?.idNumber || ''),
         tvLicenceNumber: String(saved?.tvLicenceNumber || ''),
         contactNumber: String(saved?.contactNumber || ''),
         emailAddress: String(saved?.emailAddress || ''),
         residentialAddress: String(saved?.residentialAddress || ''),
-      });
+      };
+
+      setForm(loadedForm);
+      formRef.current = loadedForm;
     } catch (error) {
       console.error('Failed to parse saved TV licence verification data', error);
     }
@@ -118,12 +127,12 @@ function Extension() {
   useEffect(() => {
     if (!shopify.buyerJourney?.intercept) return;
 
-    const unsubscribe = shopify.buyerJourney.intercept(({canBlockProgress}) => {
-      if (!hasTvInCart) {
+    const interceptor = shopify.buyerJourney.intercept(({canBlockProgress}) => {
+      if (!hasTvInCartRef.current) {
         return {behavior: 'allow'};
       }
 
-      const nextErrors = getValidationErrors(form);
+      const nextErrors = getValidationErrors(formRef.current);
       const hasErrors = Object.keys(nextErrors).length > 0;
 
       if (!hasErrors) {
@@ -154,11 +163,15 @@ function Extension() {
     });
 
     return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
+      if (typeof interceptor === 'function') {
+        interceptor();
+      }
+
+      if (typeof interceptor?.unsubscribe === 'function') {
+        interceptor.unsubscribe();
       }
     };
-  }, [form, hasTvInCart]);
+  }, []);
 
   async function saveForm(nextForm) {
     if (!shopify.applyMetafieldChange) return;
@@ -185,11 +198,12 @@ function Extension() {
     const nextValue = getValue(event);
 
     const nextForm = {
-      ...form,
+      ...formRef.current,
       [field]: nextValue,
     };
 
     setForm(nextForm);
+    formRef.current = nextForm;
     saveForm(nextForm);
 
     if (errors[field]) {
