@@ -13,3 +13,7 @@ module = "./src/Checkout.jsx"
 [extensions.capabilities]
 api_access = true
 network_access = true
+
+[[extensions.metafields]]
+namespace = "custom"
+key = "requires_tv_licence_verification"

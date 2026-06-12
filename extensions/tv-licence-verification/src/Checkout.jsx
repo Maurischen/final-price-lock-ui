@@ -14,7 +14,39 @@ function Extension() {
   const [emailAddress, setEmailAddress] = useState('');
   const [residentialAddress, setResidentialAddress] = useState('');
 
+  const appMetafields = shopify.appMetafields?.value || [];
+  const lines = shopify.lines?.value || [];
+
   const getValue = (value) => String(value || '');
+
+  const getNumericProductId = (gid) => {
+    const match = String(gid || '').match(/(\d+)$/);
+    return match ? match[1] : null;
+  };
+
+  const tvVerificationProductIds = new Set(
+    appMetafields
+      .filter((entry) => {
+        return (
+          entry?.target?.type === 'product' &&
+          entry?.metafield?.namespace === 'custom' &&
+          entry?.metafield?.key === 'requires_tv_licence_verification' &&
+          String(entry?.metafield?.value).toLowerCase() === 'true'
+        );
+      })
+      .map((entry) => String(entry?.target?.id))
+      .filter(Boolean),
+  );
+
+  const hasTvInCart = lines.some((line) => {
+    const productGid = line?.merchandise?.product?.id;
+    const numericProductId = getNumericProductId(productGid);
+    return numericProductId && tvVerificationProductIds.has(numericProductId);
+  });
+
+  if (!hasTvInCart) {
+    return null;
+  }
 
   return (
     <s-stack gap="base">
