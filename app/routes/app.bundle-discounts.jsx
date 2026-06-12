@@ -321,7 +321,7 @@ async function findOrCreateBundleDiscount(admin) {
         },
         metafields: [
           {
-            namespace: NAMESPACE,
+            namespace: EXPANDED_NAMESPACE,
             key: KEY,
             type: "json",
             value: JSON.stringify({ rules: [], standaloneDiscounts: [] }),
@@ -406,7 +406,7 @@ export async function action({ request }) {
         metafields: [
           {
             ownerId: discount.id,
-            namespace: NAMESPACE,
+            namespace: EXPANDED_NAMESPACE,
             key: KEY,
             type: "json",
             value: JSON.stringify(cleanConfig),
