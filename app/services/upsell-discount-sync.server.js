@@ -1,7 +1,7 @@
 import db from "../db.server";
 
 const TITLE = "Laptop Bundle Discount";
-const NAMESPACE = "$app:bundle-discount";
+const NAMESPACE = "app--299787976705--bundle-discount";
 const KEY = "function-configuration";
 
 const GET_APP_DISCOUNT_TYPES_QUERY = `#graphql
