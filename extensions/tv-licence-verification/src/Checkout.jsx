@@ -1,6 +1,6 @@
 import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
-import {useState} from 'preact/hooks';
+import {useEffect, useRef, useState} from 'preact/hooks';
 
 export default function extension() {
   render(<Extension />, document.body);
@@ -13,6 +13,8 @@ function Extension() {
   const [contactNumber, setContactNumber] = useState('');
   const [emailAddress, setEmailAddress] = useState('');
   const [residentialAddress, setResidentialAddress] = useState('');
+
+  const hasLoadedSavedValues = useRef(false);
 
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
@@ -43,6 +45,37 @@ function Extension() {
     const numericProductId = getNumericProductId(productGid);
     return numericProductId && tvVerificationProductIds.has(numericProductId);
   });
+
+  const savedFormEntry = appMetafields.find((entry) => {
+    return (
+      entry?.target?.type === 'cart' &&
+      entry?.metafield?.namespace === '$app' &&
+      entry?.metafield?.key === 'tv_licence_verification'
+    );
+  });
+
+  const savedFormJson = savedFormEntry?.metafield?.value;
+
+  useEffect(() => {
+    if (hasLoadedSavedValues.current) return;
+    if (!savedFormJson) return;
+
+    try {
+      const saved = JSON.parse(savedFormJson);
+
+      setFullName(String(saved?.fullName || ''));
+      setIdNumber(String(saved?.idNumber || ''));
+      setTvLicenceNumber(String(saved?.tvLicenceNumber || ''));
+      setContactNumber(String(saved?.contactNumber || ''));
+      setEmailAddress(String(saved?.emailAddress || ''));
+      setResidentialAddress(String(saved?.residentialAddress || ''));
+
+      hasLoadedSavedValues.current = true;
+    } catch (error) {
+      console.error('Failed to parse saved TV licence verification data', error);
+      hasLoadedSavedValues.current = true;
+    }
+  }, [savedFormJson]);
 
   async function saveForm(nextValues = {}) {
     if (!shopify.applyMetafieldChange) return;
