@@ -368,6 +368,14 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
                 <Button onClick={addStandaloneDiscount}>
                   Add standalone discount
                 </Button>
+                <Button
+                  submit
+                  variant="primary"
+                  loading={isSubmitting}
+                  disabled={validationErrors.length > 0}
+                >
+                  Save standalone discounts
+                </Button>
               </InlineStack>
             </InlineStack>
 
