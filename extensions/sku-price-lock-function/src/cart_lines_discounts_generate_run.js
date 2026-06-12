@@ -272,35 +272,52 @@ function buildBundleCandidates(input) {
 
     const maxDiscountable = triggerQty * (Number(rule.ratio || 1) || 1);
 
+    
     // 1) Discount offer/accessory lines
-    for (const accessory of rule.accessories || []) {
-      let remaining = maxDiscountable;
+  for (const accessory of rule.accessories || []) {
+    const accessoryDiscountValue = Number(
+      accessory.discountValue ||
+        accessory.discountAmount ||
+        accessory.discountPercentage ||
+        0,
+    );
 
-      for (const line of lines) {
-        if (remaining <= 0) break;
-        if (!lineMatchesAccessory(line, accessory)) continue;
-
-        const lineQty = Number(line.quantity || 0);
-        if (!lineQty || lineQty <= 0) continue;
-
-        const qty = Math.min(lineQty, remaining);
-
-        const message =
-          accessory.label ||
-          rule.message ||
-          "Bundle discount";
-
-        const candidate = buildDiscountCandidate(
-          line.id,
-          qty,
-          accessory,
-          message,
-        );
-
-        candidates.push(candidate);
-        remaining -= qty;
-      }
+    if (
+      !accessory.discountMode ||
+      accessory.discountMode === "NONE" ||
+      !Number.isFinite(accessoryDiscountValue) ||
+      accessoryDiscountValue <= 0
+    ) {
+      continue;
     }
+
+    let remaining = maxDiscountable;
+
+    for (const line of lines) {
+      if (remaining <= 0) break;
+      if (!lineMatchesAccessory(line, accessory)) continue;
+
+      const lineQty = Number(line.quantity || 0);
+      if (!lineQty || lineQty <= 0) continue;
+
+      const qty = Math.min(lineQty, remaining);
+
+      const message =
+        accessory.label ||
+        rule.message ||
+        "Bundle discount";
+
+      const candidate = buildDiscountCandidate(
+        line.id,
+        qty,
+        accessory,
+        message,
+      );
+
+      candidates.push(candidate);
+      remaining -= qty;
+    }
+  }
 
     // 2) Discount trigger lines, if configured
     if (

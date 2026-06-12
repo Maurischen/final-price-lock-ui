@@ -357,11 +357,9 @@ async function buildAccessory(admin, offer) {
     sku = firstVariant?.sku || sku;
   }
 
-  const discountMode = offer.discountMode || "NONE";
+    const discountMode = offer.discountMode || "NONE";
   const discountValue = Number(offer.discountValue || 0);
 
-  if (!discountMode || discountMode === "NONE") return null;
-  if (!Number.isFinite(discountValue) || discountValue <= 0) return null;
   if (!sku && !variantId && !productId) return null;
 
   return {
@@ -403,16 +401,22 @@ async function upsellRuleToBundleRule(admin, rule) {
 
   if (!accessories.length) return null;
 
-  return {
+   return {
     id: rule.id,
     name: rule.name,
     active: Boolean(rule.isActive),
+
     triggerMode: rule.triggerMode,
     triggerSku: trigger.triggerSkus[0] || "",
     triggerSkus: trigger.triggerSkus,
     triggerProductIds: trigger.triggerProductIds,
     triggerVariantIds: trigger.triggerVariantIds,
     triggerCollectionId: trigger.triggerCollectionId || null,
+
+    triggerDiscountMode: rule.triggerDiscountMode || "NONE",
+    triggerDiscountValue: Number(rule.triggerDiscountValue || 0),
+    triggerDiscountLabel: rule.triggerDiscountLabel || "",
+
     ratio: 1,
     message: rule.name || "Bundle discount",
     accessories,
