@@ -272,7 +272,7 @@ function buildBundleCandidates(input) {
 
     const maxDiscountable = triggerQty * (Number(rule.ratio || 1) || 1);
 
-    
+
     // 1) Discount offer/accessory lines
   for (const accessory of rule.accessories || []) {
     const accessoryDiscountValue = Number(
@@ -441,6 +441,24 @@ function buildStandaloneDiscountCandidates(input) {
  */
 
 export function cartLinesDiscountsGenerateRun(input) {
+  console.log(
+    "FUNCTION CONFIG:",
+    JSON.stringify(input.discount?.metafield?.jsonValue, null, 2),
+    );
+  
+  console.log(
+    "FUNCTION CART:",
+    JSON.stringify(
+      input.cart.lines.map((line) => ({
+        sku: line.merchandise?.sku,
+        variantId: line.merchandise?.id,
+        qty: line.quantity,
+      })),
+      null,
+      2,
+    ),
+  );
+
   const operations = [];
 
   const candidates = [

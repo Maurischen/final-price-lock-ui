@@ -50,13 +50,13 @@ mutation CreateBundleDiscount($input: DiscountAutomaticAppInput!) {
 }
 `;
 
-const UPDATE_MUTATION = `#graphql
-mutation UpdateBundleDiscount($id: ID!, $input: DiscountAutomaticAppInput!) {
-  discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $input) {
-    automaticAppDiscount {
-      discountId
-      title
-      status
+const METAFIELDS_SET_MUTATION = `#graphql
+mutation SetBundleDiscountMetafield($metafields: [MetafieldsSetInput!]!) {
+  metafieldsSet(metafields: $metafields) {
+    metafields {
+      id
+      namespace
+      key
     }
     userErrors {
       field
@@ -357,7 +357,7 @@ async function buildAccessory(admin, offer) {
     sku = firstVariant?.sku || sku;
   }
 
-    const discountMode = offer.discountMode || "NONE";
+  const discountMode = offer.discountMode || "NONE";
   const discountValue = Number(offer.discountValue || 0);
 
   if (!sku && !variantId && !productId) return null;
@@ -370,10 +370,7 @@ async function buildAccessory(admin, offer) {
     discountValue,
     discountAmount: discountMode === "FIXED" ? discountValue : null,
     discountPercentage: discountMode === "PERCENTAGE" ? discountValue : null,
-    label:
-      offer.discountLabel ||
-      offer.offerMessage ||
-      "Bundle discount",
+    label: offer.discountLabel || offer.offerMessage || "Bundle discount",
   };
 }
 
@@ -400,13 +397,13 @@ async function upsellRuleToBundleRule(admin, rule) {
   }
 
   const hasTriggerDiscount =
-  rule.triggerDiscountMode &&
-  rule.triggerDiscountMode !== "NONE" &&
-  Number(rule.triggerDiscountValue || 0) > 0;
+    rule.triggerDiscountMode &&
+    rule.triggerDiscountMode !== "NONE" &&
+    Number(rule.triggerDiscountValue || 0) > 0;
 
   if (!accessories.length && !hasTriggerDiscount) return null;
 
-   return {
+  return {
     id: rule.id,
     name: rule.name,
     active: Boolean(rule.isActive),
@@ -471,25 +468,23 @@ export async function syncUpsellRulesToBundleDiscount({ shop, admin }) {
   console.log("BUNDLE DISCOUNT ID:", discount.id);
   console.log("BUNDLE CLEAN CONFIG:", JSON.stringify(cleanConfig, null, 2));
 
-  const updateRes = await admin.graphql(UPDATE_MUTATION, {
+  const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
     variables: {
-      id: discount.id,
-      input: {
-        metafields: [
-          {
-            namespace: NAMESPACE,
-            key: KEY,
-            type: "json",
-            value: JSON.stringify(cleanConfig),
-          },
-        ],
-      },
+      metafields: [
+        {
+          ownerId: discount.id,
+          namespace: NAMESPACE,
+          key: KEY,
+          type: "json",
+          value: JSON.stringify(cleanConfig),
+        },
+      ],
     },
   });
 
-  const updateJson = await updateRes.json();
-  const payload = updateJson?.data?.discountAutomaticAppUpdate;
-  const userErrors = payload?.userErrors || [];
+  const metafieldsJson = await metafieldsRes.json();
+  const metafieldsPayload = metafieldsJson?.data?.metafieldsSet;
+  const userErrors = metafieldsPayload?.userErrors || [];
 
   if (userErrors.length > 0) {
     throw new Error(userErrors.map((e) => e.message).join(", "));
