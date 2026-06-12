@@ -17,8 +17,7 @@ function Extension() {
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
-  const getInputValue = (event) =>
-    String(event?.target?.value ?? event?.currentTarget?.value ?? '');
+  const getValue = (value) => String(value || '');
 
   const getNumericProductId = (gid) => {
     const match = String(gid || '').match(/(\d+)$/);
@@ -45,7 +44,7 @@ function Extension() {
     return numericProductId && tvVerificationProductIds.has(numericProductId);
   });
 
-  async function saveForm() {
+  async function saveForm(nextValues = {}) {
     if (!shopify.applyMetafieldChange) return;
 
     const payload = {
@@ -55,6 +54,7 @@ function Extension() {
       contactNumber,
       emailAddress,
       residentialAddress,
+      ...nextValues,
     };
 
     const result = await shopify.applyMetafieldChange({
@@ -87,43 +87,67 @@ function Extension() {
       <s-text-field
         label="Full Name and Surname"
         value={fullName}
-        onInput={(event) => setFullName(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setFullName(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setFullName(next);
+          await saveForm({fullName: next});
+        }}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
         value={idNumber}
-        onInput={(event) => setIdNumber(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setIdNumber(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setIdNumber(next);
+          await saveForm({idNumber: next});
+        }}
       />
 
       <s-text-field
         label="TV Licence Number (if available)"
         value={tvLicenceNumber}
-        onInput={(event) => setTvLicenceNumber(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setTvLicenceNumber(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setTvLicenceNumber(next);
+          await saveForm({tvLicenceNumber: next});
+        }}
       />
 
       <s-text-field
         label="Contact Number"
         value={contactNumber}
-        onInput={(event) => setContactNumber(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setContactNumber(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setContactNumber(next);
+          await saveForm({contactNumber: next});
+        }}
       />
 
       <s-text-field
         label="Email Address"
         value={emailAddress}
-        onInput={(event) => setEmailAddress(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setEmailAddress(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setEmailAddress(next);
+          await saveForm({emailAddress: next});
+        }}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
         value={residentialAddress}
-        onInput={(event) => setResidentialAddress(getInputValue(event))}
-        onBlur={saveForm}
+        onInput={(value) => setResidentialAddress(getValue(value))}
+        onChange={async (value) => {
+          const next = getValue(value);
+          setResidentialAddress(next);
+          await saveForm({residentialAddress: next});
+        }}
       />
 
       <s-text color="subdued">
