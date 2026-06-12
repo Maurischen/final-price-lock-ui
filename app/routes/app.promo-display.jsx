@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Form, useLoaderData, useActionData, redirect, useSubmit } from "react-router";
+import {
+  Form,
+  useLoaderData,
+  useActionData,
+  redirect,
+  useSubmit,
+} from "react-router";
 import {
   Page,
   Layout,
@@ -13,6 +19,7 @@ import {
   DataTable,
   Badge,
   Banner,
+  Checkbox,
 } from "@shopify/polaris";
 
 import { authenticate } from "../shopify.server";
@@ -52,11 +59,17 @@ export async function action({ request }) {
       }
 
       if (discountType === "FIXED" && amountRand <= 0) {
-        return Response.json({ error: "Fixed discount amount must be more than 0." }, { status: 400 });
+        return Response.json(
+          { error: "Fixed discount amount must be more than 0." },
+          { status: 400 },
+        );
       }
 
       if (discountType === "PERCENTAGE" && percent <= 0) {
-        return Response.json({ error: "Percentage discount must be more than 0." }, { status: 400 });
+        return Response.json(
+          { error: "Percentage discount must be more than 0." },
+          { status: 400 },
+        );
       }
 
       await upsertPromoDisplayRule({
@@ -95,6 +108,23 @@ export async function action({ request }) {
       return redirect("/app/promo-display");
     }
 
+    if (intent === "bulkDelete") {
+      const ids = String(formData.get("ids") || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      for (const id of ids) {
+        await deletePromoDisplayRule({
+          admin,
+          shop: session.shop,
+          id,
+        });
+      }
+
+      return redirect("/app/promo-display");
+    }
+
     return Response.json({ error: "Unknown action." }, { status: 400 });
   } catch (error) {
     return Response.json(
@@ -117,71 +147,100 @@ export default function PromoDisplayPage() {
   const [label, setLabel] = useState("");
   const [priority, setPriority] = useState("100");
   const [isEnabled, setIsEnabled] = useState(true);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   function editRule(rule) {
-  setSku(rule.sku || "");
-  setSource(rule.source || "STANDALONE");
-  setDiscountType(rule.discountType || "FIXED");
-  setDiscountAmount(
+    setSku(rule.sku || "");
+    setSource(rule.source || "STANDALONE");
+    setDiscountType(rule.discountType || "FIXED");
+
+    setDiscountAmount(
+      rule.discountType === "FIXED"
+        ? String((Number(rule.discountAmount || 0) / 100).toFixed(2))
+        : "",
+    );
+
+    setDiscountPercent(
+      rule.discountType === "PERCENTAGE"
+        ? String(rule.discountPercent || "")
+        : "",
+    );
+
+    setLabel(rule.label || "");
+    setPriority(String(rule.priority || 100));
+    setIsEnabled(Boolean(rule.isEnabled));
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }
+
+  function toggleAll() {
+    if (selectedIds.length === rules.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(rules.map((rule) => rule.id));
+    }
+  }
+
+  const rows = rules.map((rule) => [
+    <Checkbox
+      key={`select-${rule.id}`}
+      checked={selectedIds.includes(rule.id)}
+      onChange={() => toggleSelected(rule.id)}
+    />,
+    rule.sku,
+    rule.source,
+    rule.discountType,
     rule.discountType === "FIXED"
-      ? String((Number(rule.discountAmount || 0) / 100).toFixed(2))
-      : ""
-  );
-  setDiscountPercent(
-    rule.discountType === "PERCENTAGE"
-      ? String(rule.discountPercent || "")
-      : ""
-  );
-  setLabel(rule.label || "");
-  setPriority(String(rule.priority || 100));
-  setIsEnabled(Boolean(rule.isEnabled));
-}
+      ? `R ${(Number(rule.discountAmount || 0) / 100).toFixed(2)}`
+      : `${rule.discountPercent}%`,
+    rule.label || "-",
+    rule.priority,
+    rule.isEnabled ? (
+      <Badge tone="success">Enabled</Badge>
+    ) : (
+      <Badge tone="critical">Disabled</Badge>
+    ),
+    <InlineStack gap="200" key={rule.id}>
+      <Button size="slim" onClick={() => editRule(rule)}>
+        Edit
+      </Button>
 
-const rows = rules.map((rule) => [
-  rule.sku,
-  rule.source,
-  rule.discountType,
-  rule.discountType === "FIXED"
-    ? `R ${(Number(rule.discountAmount || 0) / 100).toFixed(2)}`
-    : `${rule.discountPercent}%`,
-  rule.label || "-",
-  rule.priority,
-  rule.isEnabled ? <Badge tone="success">Enabled</Badge> : <Badge tone="critical">Disabled</Badge>,
-  <InlineStack gap="200" key={rule.id}>
-    <Button size="slim" onClick={() => editRule(rule)}>
-      Edit
-    </Button>
+      {rule.isEnabled && (
+        <Button
+          size="slim"
+          onClick={() =>
+            submit(
+              { _intent: "disable", id: rule.id },
+              { method: "post" },
+            )
+          }
+        >
+          Disable
+        </Button>
+      )}
 
-    {rule.isEnabled && (
       <Button
         size="slim"
-        onClick={() =>
-          submit(
-            { _intent: "disable", id: rule.id },
-            { method: "post" }
-          )
-        }
+        tone="critical"
+        onClick={() => {
+          if (confirm(`Delete promo display rule for ${rule.sku}?`)) {
+            submit(
+              { _intent: "delete", id: rule.id },
+              { method: "post" },
+            );
+          }
+        }}
       >
-        Disable
+        Delete
       </Button>
-    )}
-
-    <Button
-      size="slim"
-      tone="critical"
-      onClick={() => {
-        if (confirm(`Delete promo display rule for ${rule.sku}?`)) {
-          submit(
-            { _intent: "delete", id: rule.id },
-            { method: "post" }
-          );
-        }
-      }}
-    >
-      Delete
-    </Button>
-  </InlineStack>,
-]);
+    </InlineStack>,
+  ]);
 
   return (
     <Page title="Promo Display Rules">
@@ -249,7 +308,6 @@ const rows = rules.map((rule) => [
                     onChange={setDiscountAmount}
                     autoComplete="off"
                     placeholder="101.00"
-                    helpText="Example: 101.00 will display as SAVE R101.00"
                   />
 
                   <TextField
@@ -261,7 +319,6 @@ const rows = rules.map((rule) => [
                     onChange={setDiscountPercent}
                     autoComplete="off"
                     placeholder="25"
-                    helpText="Only used when discount type is Percentage."
                   />
 
                   <TextField
@@ -271,7 +328,6 @@ const rows = rules.map((rule) => [
                     onChange={setLabel}
                     autoComplete="off"
                     placeholder="SAVE R101"
-                    helpText="Optional. If blank, the theme can fall back to the amount."
                   />
 
                   <TextField
@@ -281,7 +337,6 @@ const rows = rules.map((rule) => [
                     value={priority}
                     onChange={setPriority}
                     autoComplete="off"
-                    helpText="Lower number wins if you later sync multiple promo sources."
                   />
 
                   <label>
@@ -305,9 +360,34 @@ const rows = rules.map((rule) => [
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Existing Rules
-              </Text>
+              <InlineStack align="space-between">
+                <Text as="h2" variant="headingMd">
+                  Existing Rules
+                </Text>
+
+                {selectedIds.length > 0 && (
+                  <Button
+                    tone="critical"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Delete ${selectedIds.length} selected promo display rule(s)?`,
+                        )
+                      ) {
+                        submit(
+                          {
+                            _intent: "bulkDelete",
+                            ids: selectedIds.join(","),
+                          },
+                          { method: "post" },
+                        );
+                      }
+                    }}
+                  >
+                    Delete selected ({selectedIds.length})
+                  </Button>
+                )}
+              </InlineStack>
 
               {rules.length === 0 ? (
                 <Text as="p">No promo display rules yet.</Text>
@@ -319,11 +399,17 @@ const rows = rules.map((rule) => [
                     "text",
                     "text",
                     "text",
+                    "text",
                     "numeric",
                     "text",
                     "text",
                   ]}
                   headings={[
+                    <Checkbox
+                      key="select-all"
+                      checked={rules.length > 0 && selectedIds.length === rules.length}
+                      onChange={toggleAll}
+                    />,
                     "SKU",
                     "Source",
                     "Type",
