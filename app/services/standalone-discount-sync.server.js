@@ -72,15 +72,25 @@ async function getCurrentStoreFunctionId(admin) {
 
   const types = json?.data?.appDiscountTypes || [];
 
-  const match = types.find(
+  console.log("APP DISCOUNT TYPES:", JSON.stringify(types, null, 2));
+
+  const exactTitleMatch = types.find(
     (item) => item?.title === "Laptop Bundle Discount" && item?.functionId,
   );
 
-  if (!match?.functionId) {
-    throw new Error(`Could not find discount functionId for Laptop Bundle Discount.`);
+  if (exactTitleMatch?.functionId) return exactTitleMatch.functionId;
+
+  if (types.length === 1 && types[0]?.functionId) {
+    return types[0].functionId;
   }
 
-  return match.functionId;
+  const anyFunctionMatch = types.find((item) => item?.functionId);
+
+  if (anyFunctionMatch?.functionId) {
+    return anyFunctionMatch.functionId;
+  }
+
+  throw new Error("Could not find any discount functionId for this store.");
 }
 
 async function findOrCreateStandalonePromoDiscount(admin) {
