@@ -6,20 +6,25 @@ export default function extension() {
   render(<Extension />, document.body);
 }
 
-function Extension() {
-  const [fullName, setFullName] = useState('');
-  const [idNumber, setIdNumber] = useState('');
-  const [tvLicenceNumber, setTvLicenceNumber] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [emailAddress, setEmailAddress] = useState('');
-  const [residentialAddress, setResidentialAddress] = useState('');
+const EMPTY_FORM = {
+  fullName: '',
+  idNumber: '',
+  tvLicenceNumber: '',
+  contactNumber: '',
+  emailAddress: '',
+  residentialAddress: '',
+};
 
+function Extension() {
+  const [form, setForm] = useState(EMPTY_FORM);
   const hasLoadedSavedValues = useRef(false);
 
   const appMetafields = shopify.appMetafields?.value || [];
   const lines = shopify.lines?.value || [];
 
-  const getValue = (value) => String(value || '');
+  const getValue = (event) => {
+    return String(event?.target?.value ?? event?.currentTarget?.value ?? event ?? '');
+  };
 
   const getNumericProductId = (gid) => {
     const match = String(gid || '').match(/(\d+)$/);
@@ -63,32 +68,23 @@ function Extension() {
     try {
       const saved = JSON.parse(savedFormJson);
 
-      setFullName(String(saved?.fullName || ''));
-      setIdNumber(String(saved?.idNumber || ''));
-      setTvLicenceNumber(String(saved?.tvLicenceNumber || ''));
-      setContactNumber(String(saved?.contactNumber || ''));
-      setEmailAddress(String(saved?.emailAddress || ''));
-      setResidentialAddress(String(saved?.residentialAddress || ''));
-
-      hasLoadedSavedValues.current = true;
+      setForm({
+        fullName: String(saved?.fullName || ''),
+        idNumber: String(saved?.idNumber || ''),
+        tvLicenceNumber: String(saved?.tvLicenceNumber || ''),
+        contactNumber: String(saved?.contactNumber || ''),
+        emailAddress: String(saved?.emailAddress || ''),
+        residentialAddress: String(saved?.residentialAddress || ''),
+      });
     } catch (error) {
       console.error('Failed to parse saved TV licence verification data', error);
-      hasLoadedSavedValues.current = true;
     }
+
+    hasLoadedSavedValues.current = true;
   }, [savedFormJson]);
 
-  async function saveForm(nextValues = {}) {
+  async function saveForm(nextForm) {
     if (!shopify.applyMetafieldChange) return;
-
-    const payload = {
-      fullName,
-      idNumber,
-      tvLicenceNumber,
-      contactNumber,
-      emailAddress,
-      residentialAddress,
-      ...nextValues,
-    };
 
     const result = await shopify.applyMetafieldChange({
       type: 'updateCartMetafield',
@@ -96,13 +92,25 @@ function Extension() {
         namespace: '$app',
         key: 'tv_licence_verification',
         type: 'json',
-        value: JSON.stringify(payload),
+        value: JSON.stringify(nextForm),
       },
     });
 
     if (result?.type === 'error') {
       console.error('Failed to save TV licence verification form', result.message);
     }
+  }
+
+  function updateField(field, event) {
+    const nextValue = getValue(event);
+
+    const nextForm = {
+      ...form,
+      [field]: nextValue,
+    };
+
+    setForm(nextForm);
+    saveForm(nextForm);
   }
 
   if (!hasTvInCart) {
@@ -119,68 +127,38 @@ function Extension() {
 
       <s-text-field
         label="Full Name and Surname"
-        value={fullName}
-        onInput={(value) => setFullName(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setFullName(next);
-          await saveForm({fullName: next});
-        }}
+        value={form.fullName}
+        onInput={(event) => updateField('fullName', event)}
       />
 
       <s-text-field
         label="South African ID Number / Passport Number"
-        value={idNumber}
-        onInput={(value) => setIdNumber(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setIdNumber(next);
-          await saveForm({idNumber: next});
-        }}
+        value={form.idNumber}
+        onInput={(event) => updateField('idNumber', event)}
       />
 
       <s-text-field
         label="TV Licence Number (if available)"
-        value={tvLicenceNumber}
-        onInput={(value) => setTvLicenceNumber(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setTvLicenceNumber(next);
-          await saveForm({tvLicenceNumber: next});
-        }}
+        value={form.tvLicenceNumber}
+        onInput={(event) => updateField('tvLicenceNumber', event)}
       />
 
       <s-text-field
         label="Contact Number"
-        value={contactNumber}
-        onInput={(value) => setContactNumber(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setContactNumber(next);
-          await saveForm({contactNumber: next});
-        }}
+        value={form.contactNumber}
+        onInput={(event) => updateField('contactNumber', event)}
       />
 
       <s-text-field
         label="Email Address"
-        value={emailAddress}
-        onInput={(value) => setEmailAddress(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setEmailAddress(next);
-          await saveForm({emailAddress: next});
-        }}
+        value={form.emailAddress}
+        onInput={(event) => updateField('emailAddress', event)}
       />
 
       <s-text-field
         label="Residential Address linked to the TV Licence"
-        value={residentialAddress}
-        onInput={(value) => setResidentialAddress(getValue(value))}
-        onChange={async (value) => {
-          const next = getValue(value);
-          setResidentialAddress(next);
-          await saveForm({residentialAddress: next});
-        }}
+        value={form.residentialAddress}
+        onInput={(event) => updateField('residentialAddress', event)}
       />
 
       <s-text color="subdued">
