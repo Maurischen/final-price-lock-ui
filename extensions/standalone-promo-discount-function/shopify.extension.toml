@@ -1,0 +1,17 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "Standalone Promo Discount"
+handle = "standalone-promo-discount-function"
+type = "function"
+uid = "3f19c463-8ca8-892d-ad03-3a3afcb37a4fbcdde1a2"
+description = "Standalone promo product discount function"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

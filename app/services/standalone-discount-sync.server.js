@@ -75,7 +75,7 @@ async function getCurrentStoreFunctionId(admin) {
   console.log("APP DISCOUNT TYPES:", JSON.stringify(types, null, 2));
 
   const exactTitleMatch = types.find(
-    (item) => item?.title === "Laptop Bundle Discount" && item?.functionId,
+    (item) => item?.title === "Standalone Promo Discount" && item?.functionId,
   );
 
   if (exactTitleMatch?.functionId) return exactTitleMatch.functionId;
@@ -90,7 +90,7 @@ async function getCurrentStoreFunctionId(admin) {
     return anyFunctionMatch.functionId;
   }
 
-  throw new Error("Could not find any discount functionId for this store.");
+  throw new Error("Could not find discount functionId for Standalone Promo Discount.");
 }
 
 async function findOrCreateStandalonePromoDiscount(admin) {

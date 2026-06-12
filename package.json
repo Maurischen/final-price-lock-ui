@@ -29,6 +29,7 @@
     "@react-router/serve": "7.13.2",
     "@shopify/app-bridge-react": "^4.1.6",
     "@shopify/polaris": "^12.15.0",
+    "@shopify/shopify_function": "~2.0.0",
     "@shopify/shopify-app-react-router": "^1.0.3",
     "@shopify/shopify-app-session-storage-prisma": "^7.0.3",
     "@shopify/ui-extensions": "2025.10.8",
