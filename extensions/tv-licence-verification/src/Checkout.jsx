@@ -1,7 +1,6 @@
 import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
 import {useEffect, useRef, useState} from 'preact/hooks';
-import {useBuyerJourneyIntercept} from '@shopify/ui-extensions/preact';
 
 export default function extension() {
   render(<Extension />, document.body);
@@ -116,40 +115,50 @@ function Extension() {
     return nextErrors;
   }
 
-  useBuyerJourneyIntercept(({canBlockProgress}) => {
-  if (!hasTvInCart) {
-    return {behavior: 'allow'};
-  }
+  useEffect(() => {
+    if (!shopify.buyerJourney?.intercept) return;
 
-  const nextErrors = getValidationErrors(form);
-  const hasErrors = Object.keys(nextErrors).length > 0;
+    const unsubscribe = shopify.buyerJourney.intercept(({canBlockProgress}) => {
+      if (!hasTvInCart) {
+        return {behavior: 'allow'};
+      }
 
-  if (!hasErrors) {
-    return {
-      behavior: 'allow',
-      perform: () => setErrors({}),
+      const nextErrors = getValidationErrors(form);
+      const hasErrors = Object.keys(nextErrors).length > 0;
+
+      if (!hasErrors) {
+        return {
+          behavior: 'allow',
+          perform: () => setErrors({}),
+        };
+      }
+
+      if (!canBlockProgress) {
+        return {
+          behavior: 'allow',
+          perform: () => setErrors(nextErrors),
+        };
+      }
+
+      return {
+        behavior: 'block',
+        reason: 'TV licence verification is required',
+        perform: () => setErrors(nextErrors),
+        errors: [
+          {
+            message:
+              'Please complete the required TV licence verification fields before continuing.',
+          },
+        ],
+      };
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
     };
-  }
-
-  if (!canBlockProgress) {
-    return {
-      behavior: 'allow',
-      perform: () => setErrors(nextErrors),
-    };
-  }
-
-  return {
-    behavior: 'block',
-    reason: 'TV licence verification is required',
-    perform: () => setErrors(nextErrors),
-    errors: [
-      {
-        message:
-          'Please complete the required TV licence verification fields before continuing.',
-      },
-    ],
-  };
-});
+  }, [form, hasTvInCart]);
 
   async function saveForm(nextForm) {
     if (!shopify.applyMetafieldChange) return;
