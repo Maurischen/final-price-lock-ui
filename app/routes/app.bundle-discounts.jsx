@@ -502,6 +502,13 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
   const [config, setConfig] = useState(normalizeConfig(initialConfig));
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedRules, setCollapsedRules] = useState({});
+  const payloadString = JSON.stringify({
+  rules: config.rules || [],
+  });
+
+  const payloadBytes = new TextEncoder().encode(payloadString).length;
+  const payloadKb = (payloadBytes / 1024).toFixed(2);
+  const ruleCount = config.rules?.length || 0;
 
   useEffect(() => {
     setConfig(normalizeConfig(initialConfig));
@@ -635,6 +642,20 @@ function BundleRulesEditor({ initialConfig, isSubmitting }) {
       <BlockStack gap="400">
         <Card>
           <BlockStack gap="300">
+            <Banner
+              tone={
+                payloadBytes > 10000
+                  ? "critical"
+                  : payloadBytes > 8000
+                    ? "warning"
+                    : "success"
+              }
+              title={`Bundle config: ${ruleCount} rules / ${payloadKb} KB (${payloadBytes} bytes)`}
+            >
+              <Text as="p">
+                Function-safe target: stay under 10KB. Shopify JSON metafield limit is 128KB.
+              </Text>
+            </Banner>
             <InlineStack align="space-between" blockAlign="end" gap="300" wrap>
               <Box minWidth="320px">
                 <TextField

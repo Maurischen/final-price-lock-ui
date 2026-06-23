@@ -258,6 +258,14 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedItems, setCollapsedItems] = useState({});
 
+  const payloadString = JSON.stringify({
+  standaloneDiscounts: items || [],
+  });
+
+  const payloadBytes = new TextEncoder().encode(payloadString).length;
+  const payloadKb = (payloadBytes / 1024).toFixed(2);
+  const discountCount = items?.length || 0;
+
   useEffect(() => {
     setItems(normalizeStandaloneDiscounts(initialStandaloneDiscounts));
   }, [initialStandaloneDiscounts]);
@@ -348,9 +356,24 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
         value={JSON.stringify(items)}
       />
 
-      <BlockStack gap="400">
+       <BlockStack gap="400">
         <Card>
           <BlockStack gap="300">
+            <Banner
+              tone={
+                payloadBytes > 10000
+                  ? "critical"
+                  : payloadBytes > 8000
+                    ? "warning"
+                    : "success"
+              }
+              title={`Standalone config: ${discountCount} discounts / ${payloadKb} KB (${payloadBytes} bytes)`}
+            >
+              <Text as="p">
+                Function-safe target: stay under 10KB. Shopify JSON metafield limit is 128KB.
+              </Text>
+            </Banner>
+            
             <InlineStack align="space-between" blockAlign="end" gap="300" wrap>
               <Box minWidth="320px">
                 <TextField
