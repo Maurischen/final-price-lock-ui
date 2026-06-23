@@ -38,7 +38,6 @@ export async function loader({ request }) {
         ? {
             sku: {
               contains: q,
-              mode: "insensitive",
             },
           }
         : {}),
