@@ -174,26 +174,54 @@ function Extension() {
   }, []);
 
   async function saveForm(nextForm) {
-    if (!shopify.applyMetafieldChange) return;
+    if (shopify.applyMetafieldChange) {
+      const metafieldResult = await shopify.applyMetafieldChange({
+        type: 'updateCartMetafield',
+        metafield: {
+          namespace: '$app',
+          key: 'tv_licence_verification',
+          type: 'json',
+          value: JSON.stringify(nextForm),
+        },
+      });
 
-    const result = await shopify.applyMetafieldChange({
-      type: 'updateCartMetafield',
-      metafield: {
-        namespace: '$app',
+      if (metafieldResult?.type === 'error') {
+        console.error(
+          'Failed to save TV licence verification form',
+          metafieldResult.message,
+        );
+      }
+    }
+
+    if (shopify.applyAttributeChange) {
+      await shopify.applyAttributeChange({
+        type: 'updateAttribute',
         key: 'tv_licence_verification',
-        type: 'json',
-        value: JSON.stringify(nextForm),
-      },
-    });
+        value: '',
+      });
 
-    if (result?.type === 'error') {
-      console.error(
-        'Failed to save TV licence verification form',
-        result.message,
-      );
+      const attributes = [
+        ['TV Licence - Full Name', nextForm.fullName],
+        ['TV Licence - ID / Passport', nextForm.idNumber],
+        ['TV Licence - Licence Number', nextForm.tvLicenceNumber || 'Not provided'],
+        ['TV Licence - Contact Number', nextForm.contactNumber],
+        ['TV Licence - Email', nextForm.emailAddress],
+        ['TV Licence - Residential Address', nextForm.residentialAddress],
+      ];
+
+      for (const [key, value] of attributes) {
+        const attributeResult = await shopify.applyAttributeChange({
+          type: 'updateAttribute',
+          key,
+          value: String(value || ''),
+        });
+
+        if (attributeResult?.type === 'error') {
+          console.error(`Failed to save ${key}`, attributeResult.message);
+        }
+      }
     }
   }
-
   function updateField(field, event) {
     const nextValue = getValue(event);
 

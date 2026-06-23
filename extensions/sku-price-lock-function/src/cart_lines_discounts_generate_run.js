@@ -250,6 +250,7 @@ function buildBundleCandidates(input) {
     if (!triggerQty || triggerQty <= 0) continue;
 
     const maxDiscountable = triggerQty * (Number(rule.ratio || 1) || 1);
+    let hasQualifyingAccessoryInCart = false;
 
     for (const accessory of rule.accessories || []) {
       const accessoryDiscountValue = Number(
@@ -274,6 +275,8 @@ function buildBundleCandidates(input) {
 
         const lineQty = Number(line.quantity || 0);
         if (!lineQty || lineQty <= 0) continue;
+
+        hasQualifyingAccessoryInCart = true;
 
         const qty = Math.min(lineQty, remaining);
         const message = accessory.label || rule.message || "Bundle discount";
@@ -304,6 +307,7 @@ function buildBundleCandidates(input) {
     }
 
     if (
+      hasQualifyingAccessoryInCart &&
       rule.triggerDiscountMode &&
       rule.triggerDiscountMode !== "NONE" &&
       Number(rule.triggerDiscountValue || 0) > 0

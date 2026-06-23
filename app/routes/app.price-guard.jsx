@@ -28,12 +28,25 @@ export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
+  const url = new URL(request.url);
+  const q = String(url.searchParams.get("q") || "").trim();
+
   const rules = await db.priceGuard.findMany({
-    where: { shop },
+    where: {
+      shop,
+      ...(q
+        ? {
+            sku: {
+              contains: q,
+              mode: "insensitive",
+            },
+          }
+        : {}),
+    },
     orderBy: { sku: "asc" },
   });
 
-  return { rules };
+  return { rules, q };
 }
 
 // Action: create / update / delete rules for the current store
@@ -188,7 +201,7 @@ export async function action({ request }) {
 }
 
 export default function PriceGuardPage() {
-  const { rules } = useLoaderData();
+  const { rules, q } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -294,8 +307,43 @@ export default function PriceGuardPage() {
       </s-section>
 
       <s-section>
-        <s-paragraph as="h2" fontWeight="bold">Existing rules</s-paragraph>
+        <Form method="get">
+          <s-box display="flex" flexDirection="row" gap="base" marginBlockEnd="base">
+            <s-box flex="2">
+              <label>
+                <s-text as="p" fontWeight="medium">Search SKU</s-text>
+                <input
+                  name="q"
+                  defaultValue={q || ""}
+                  placeholder="Search by SKU..."
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: "4px",
+                    border: "1px solid #c4cdd5",
+                  }}
+                />
+              </label>
+            </s-box>
 
+            <s-box display="flex" alignItems="end" gap="base">
+              <s-button variant="primary" type="submit">
+                Search
+              </s-button>
+
+              <a href="/app/price-guard" style={{ textDecoration: "none" }}>
+                <s-button type="button">
+                  Clear
+                </s-button>
+              </a>
+            </s-box>
+          </s-box>
+        </Form>
+      </s-section>            
+
+      <s-section>
+        <s-paragraph as="h2" fontWeight="bold">Existing rules ({rules.length})</s-paragraph>
+      
         {rules.length === 0 ? (
           <s-paragraph>No rules yet. Add your first SKU above.</s-paragraph>
         ) : (
