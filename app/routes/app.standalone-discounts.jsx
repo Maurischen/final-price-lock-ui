@@ -60,7 +60,10 @@ query FindLegacyStandaloneDiscounts {
 function emptyStandaloneDiscount() {
   return {
     active: true,
+    targetType: "SKU",
     sku: "",
+    collectionId: "",
+    collectionTitle: "",
     discountMode: "FIXED",
     discountAmount: "",
     message: "Promo discount",
@@ -70,37 +73,52 @@ function emptyStandaloneDiscount() {
 function normalizeStandaloneDiscounts(rawItems) {
   const items = Array.isArray(rawItems) ? rawItems : [];
 
-  return items.map((item) => ({
-    active: Boolean(item?.active ?? true),
-    sku: String(item?.sku || ""),
-    discountMode: item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
-    discountAmount:
-      item?.discountAmount === 0 || item?.discountAmount
-        ? String(item.discountAmount)
-        : item?.amount === 0 || item?.amount
-          ? String(item.amount)
-          : "",
-    message: String(item?.message || item?.label || "Promo discount"),
-  }));
+  return items.map((item) => {
+    const targetType = item?.targetType === "COLLECTION" ? "COLLECTION" : "SKU";
+
+    return {
+      active: Boolean(item?.active ?? true),
+      targetType,
+      sku: String(item?.sku || ""),
+      collectionId: String(item?.collectionId || ""),
+      collectionTitle: String(item?.collectionTitle || ""),
+      discountMode:
+        item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+      discountAmount:
+        item?.discountAmount === 0 || item?.discountAmount
+          ? String(item.discountAmount)
+          : item?.amount === 0 || item?.amount
+            ? String(item.amount)
+            : "",
+      message: String(item?.message || item?.label || "Promo discount"),
+    };
+  });
 }
 
 function sanitizeStandaloneDiscounts(rawItems) {
   return normalizeStandaloneDiscounts(rawItems)
     .map((item) => ({
       active: Boolean(item.active),
+      targetType: item.targetType === "COLLECTION" ? "COLLECTION" : "SKU",
       sku: String(item.sku || "").trim(),
+      collectionId: String(item.collectionId || "").trim(),
+      collectionTitle: String(item.collectionTitle || "").trim(),
       discountMode: item.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
       discountAmount: parseFloat(
         String(item.discountAmount || "").replace(",", "."),
       ),
       message: String(item.message || "").trim() || "Promo discount",
     }))
-    .filter(
-      (item) =>
-        item.sku &&
+    .filter((item) => {
+      const hasTarget =
+        item.targetType === "COLLECTION" ? item.collectionId : item.sku;
+
+      return (
+        hasTarget &&
         Number.isFinite(item.discountAmount) &&
-        item.discountAmount > 0,
-    );
+        item.discountAmount > 0
+      );
+    });
 }
 
 async function getLegacyStandaloneDiscounts(admin) {
@@ -208,28 +226,37 @@ export async function action({ request }) {
 
 function validateStandaloneDiscounts(items) {
   const errors = [];
-  const seenSkus = new Set();
+  const seenTargets = new Set();
 
   (items || []).forEach((item, index) => {
+    const targetType = item.targetType === "COLLECTION" ? "COLLECTION" : "SKU";
     const sku = String(item.sku || "").trim();
+    const collectionId = String(item.collectionId || "").trim();
     const discountAmount = parseFloat(
       String(item.discountAmount || "").replace(",", "."),
     );
 
-    if (!sku) {
+    if (targetType === "SKU" && !sku) {
       errors.push(`Standalone discount ${index + 1}: SKU is required.`);
     }
 
-    if (sku) {
-      const normalizedSku = sku.toUpperCase();
+    if (targetType === "COLLECTION" && !collectionId) {
+      errors.push(`Standalone discount ${index + 1}: Collection ID is required.`);
+    }
 
-      if (seenSkus.has(normalizedSku)) {
+    const targetKey =
+      targetType === "COLLECTION"
+        ? `COLLECTION:${collectionId}`
+        : `SKU:${sku.toUpperCase()}`;
+
+    if ((targetType === "SKU" && sku) || (targetType === "COLLECTION" && collectionId)) {
+      if (seenTargets.has(targetKey)) {
         errors.push(
-          `Standalone discount ${index + 1}: Duplicate SKU "${sku}" found.`,
+          `Standalone discount ${index + 1}: Duplicate ${targetType.toLowerCase()} target found.`,
         );
       }
 
-      seenSkus.add(normalizedSku);
+      seenTargets.add(targetKey);
     }
 
     if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
@@ -258,8 +285,21 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
   const [searchTerm, setSearchTerm] = useState("");
   const [collapsedItems, setCollapsedItems] = useState({});
 
+  const collectionCount = new Set(
+    items
+      .filter((item) => item.targetType === "COLLECTION" && item.collectionId)
+      .map((item) => item.collectionId),
+  ).size;
+
   const payloadString = JSON.stringify({
-  standaloneDiscounts: items || [],
+    standaloneDiscounts: items || [],
+    collectionIds: [
+      ...new Set(
+        items
+          .filter((item) => item.targetType === "COLLECTION" && item.collectionId)
+          .map((item) => item.collectionId),
+      ),
+    ],
   });
 
   const payloadBytes = new TextEncoder().encode(payloadString).length;
@@ -283,7 +323,14 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
     return items
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => {
-        const haystacks = [item.sku, item.message, item.discountMode];
+        const haystacks = [
+          item.targetType,
+          item.sku,
+          item.collectionId,
+          item.collectionTitle,
+          item.message,
+          item.discountMode,
+        ];
 
         return haystacks.some((value) =>
           String(value || "").toLowerCase().includes(term),
@@ -303,6 +350,16 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
         ...next[index],
         ...updates,
       };
+
+      if (updates.targetType === "SKU") {
+        next[index].collectionId = "";
+        next[index].collectionTitle = "";
+      }
+
+      if (updates.targetType === "COLLECTION") {
+        next[index].sku = "";
+      }
+
       return next;
     });
   }
@@ -312,7 +369,15 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
       const next = structuredClone(prev);
       const copied = {
         ...next[index],
-        sku: "",
+        sku: next[index]?.targetType === "SKU" ? "" : next[index]?.sku || "",
+        collectionId:
+          next[index]?.targetType === "COLLECTION"
+            ? ""
+            : next[index]?.collectionId || "",
+        collectionTitle:
+          next[index]?.targetType === "COLLECTION"
+            ? ""
+            : next[index]?.collectionTitle || "",
         message: next[index]?.message || "Promo discount",
       };
       next.splice(index + 1, 0, copied);
@@ -356,7 +421,7 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
         value={JSON.stringify(items)}
       />
 
-       <BlockStack gap="400">
+      <BlockStack gap="400">
         <Card>
           <BlockStack gap="300">
             <Banner
@@ -370,17 +435,18 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
               title={`Standalone config: ${discountCount} discounts / ${payloadKb} KB (${payloadBytes} bytes)`}
             >
               <Text as="p">
-                Function-safe target: stay under 10KB. Shopify JSON metafield limit is 128KB.
+                Function-safe target: stay under 10KB. Collections used:{" "}
+                {collectionCount}/100.
               </Text>
             </Banner>
-            
+
             <InlineStack align="space-between" blockAlign="end" gap="300" wrap>
               <Box minWidth="320px">
                 <TextField
                   label="Search standalone discounts"
                   value={searchTerm}
                   onChange={setSearchTerm}
-                  placeholder="Search by SKU, message or discount type"
+                  placeholder="Search by SKU, collection, message or discount type"
                   autoComplete="off"
                 />
               </Box>
@@ -417,8 +483,8 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
             {items.length === 0 ? (
               <Banner title="No standalone discounts yet">
                 <Text as="p">
-                  Add a SKU here when you want that product to receive its own
-                  automatic discount without needing a trigger product.
+                  Add a SKU or collection here when you want products to receive
+                  their own automatic discount without needing a trigger product.
                 </Text>
               </Banner>
             ) : null}
@@ -435,6 +501,10 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
           {visibleIndexes.map((index) => {
             const item = items[index];
             const isCollapsed = Boolean(collapsedItems[index]);
+            const targetLabel =
+              item.targetType === "COLLECTION"
+                ? item.collectionTitle || item.collectionId || `Collection discount ${index + 1}`
+                : item.sku || `Standalone discount ${index + 1}`;
 
             return (
               <Card key={`standalone-${index}`}>
@@ -442,8 +512,10 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
                   <InlineStack align="space-between" blockAlign="center">
                     <InlineStack gap="200" blockAlign="center">
                       <Text as="h3" variant="headingMd">
-                        {item.sku || `Standalone discount ${index + 1}`}
+                        {targetLabel}
                       </Text>
+
+                      <Badge>{item.targetType || "SKU"}</Badge>
 
                       <Badge tone={item.active ? "success" : undefined}>
                         {item.active ? "Active" : "Inactive"}
@@ -480,17 +552,65 @@ function StandaloneDiscountsEditor({ initialStandaloneDiscounts, isSubmitting })
                       <Divider />
 
                       <InlineStack gap="300" wrap>
-                        <Box minWidth="220px">
-                          <TextField
-                            label="SKU"
-                            value={item.sku}
+                        <Box minWidth="180px">
+                          <Select
+                            label="Target type"
+                            options={[
+                              { label: "SKU", value: "SKU" },
+                              { label: "Collection", value: "COLLECTION" },
+                            ]}
+                            value={item.targetType || "SKU"}
                             onChange={(value) =>
-                              updateStandaloneDiscount(index, { sku: value })
+                              updateStandaloneDiscount(index, {
+                                targetType: value,
+                              })
                             }
-                            placeholder="e.g. PROMO-SKU-1"
-                            autoComplete="off"
                           />
                         </Box>
+
+                        {item.targetType === "COLLECTION" ? (
+                          <>
+                            <Box minWidth="320px">
+                              <TextField
+                                label="Collection ID"
+                                value={item.collectionId}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, {
+                                    collectionId: value,
+                                  })
+                                }
+                                placeholder="gid://shopify/Collection/123456789"
+                                autoComplete="off"
+                              />
+                            </Box>
+
+                            <Box minWidth="260px">
+                              <TextField
+                                label="Collection title"
+                                value={item.collectionTitle}
+                                onChange={(value) =>
+                                  updateStandaloneDiscount(index, {
+                                    collectionTitle: value,
+                                  })
+                                }
+                                placeholder="Optional display label"
+                                autoComplete="off"
+                              />
+                            </Box>
+                          </>
+                        ) : (
+                          <Box minWidth="220px">
+                            <TextField
+                              label="SKU"
+                              value={item.sku}
+                              onChange={(value) =>
+                                updateStandaloneDiscount(index, { sku: value })
+                              }
+                              placeholder="e.g. PROMO-SKU-1"
+                              autoComplete="off"
+                            />
+                          </Box>
+                        )}
 
                         <Box minWidth="180px">
                           <Select
@@ -600,7 +720,7 @@ export default function StandaloneDiscountsPage() {
   return (
     <Page
       title="Standalone Promo Discounts"
-      subtitle="Manage standalone product discounts separately from bundle rules."
+      subtitle="Manage standalone product and collection discounts separately from bundle rules."
     >
       <Layout>
         <Layout.Section>

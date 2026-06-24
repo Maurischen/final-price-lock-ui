@@ -90,7 +90,9 @@ async function getCurrentStoreFunctionId(admin) {
     return anyFunctionMatch.functionId;
   }
 
-  throw new Error("Could not find discount functionId for Standalone Promo Discount.");
+  throw new Error(
+    "Could not find discount functionId for Standalone Promo Discount.",
+  );
 }
 
 async function findOrCreateStandalonePromoDiscount(admin) {
@@ -106,15 +108,18 @@ async function findOrCreateStandalonePromoDiscount(admin) {
       discount?.__typename === "DiscountAutomaticApp" &&
       discount.title === TITLE
     ) {
+      const config = node.metafield?.jsonValue || {};
+
       return {
         id: node.id,
         title: discount.title,
         status: discount.status || "",
         config: {
-          standaloneDiscounts: Array.isArray(
-            node.metafield?.jsonValue?.standaloneDiscounts,
-          )
-            ? node.metafield.jsonValue.standaloneDiscounts
+          standaloneDiscounts: Array.isArray(config?.standaloneDiscounts)
+            ? config.standaloneDiscounts
+            : [],
+          collectionIds: Array.isArray(config?.collectionIds)
+            ? config.collectionIds
             : [],
         },
       };
@@ -140,7 +145,10 @@ async function findOrCreateStandalonePromoDiscount(admin) {
             namespace: NAMESPACE,
             key: KEY,
             type: "json",
-            value: JSON.stringify({ standaloneDiscounts: [] }),
+            value: JSON.stringify({
+              standaloneDiscounts: [],
+              collectionIds: [],
+            }),
           },
         ],
       },
@@ -165,7 +173,10 @@ async function findOrCreateStandalonePromoDiscount(admin) {
     id,
     title: TITLE,
     status: payload?.automaticAppDiscount?.status || "",
-    config: { standaloneDiscounts: [] },
+    config: {
+      standaloneDiscounts: [],
+      collectionIds: [],
+    },
   };
 }
 
@@ -175,22 +186,53 @@ function normalizeStandaloneDiscounts(rawConfig) {
     : [];
 
   return standaloneDiscounts
-    .map((item) => ({
-      active: Boolean(item?.active ?? true),
-      sku: String(item?.sku || "").trim(),
-      discountMode:
-        item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
-      discountAmount: Number(
-        item?.discountAmount ?? item?.discountValue ?? item?.amount ?? 0,
-      ),
-      message: String(item?.message || item?.label || "Promo discount").trim(),
-    }))
-    .filter(
-      (item) =>
-        item.sku &&
+    .map((item) => {
+      const targetType =
+        item?.targetType === "COLLECTION" ? "COLLECTION" : "SKU";
+
+      const sku = String(item?.sku || "").trim();
+      const collectionId = String(item?.collectionId || "").trim();
+      const collectionTitle = String(item?.collectionTitle || "").trim();
+
+      return {
+        active: Boolean(item?.active ?? true),
+        targetType,
+        sku,
+        collectionId,
+        collectionTitle,
+        discountMode:
+          item?.discountMode === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+        discountAmount: Number(
+          item?.discountAmount ?? item?.discountValue ?? item?.amount ?? 0,
+        ),
+        message: String(item?.message || item?.label || "Promo discount").trim(),
+      };
+    })
+    .filter((item) => {
+      const hasValidTarget =
+        item.targetType === "COLLECTION" ? item.collectionId : item.sku;
+
+      return (
+        hasValidTarget &&
         Number.isFinite(item.discountAmount) &&
-        item.discountAmount > 0,
-    );
+        item.discountAmount > 0
+      );
+    });
+}
+
+function getCollectionIdsFromStandaloneDiscounts(standaloneDiscounts) {
+  return [
+    ...new Set(
+      standaloneDiscounts
+        .filter(
+          (item) =>
+            item?.targetType === "COLLECTION" &&
+            typeof item.collectionId === "string" &&
+            item.collectionId.trim(),
+        )
+        .map((item) => item.collectionId.trim()),
+    ),
+  ].slice(0, 100);
 }
 
 export async function syncStandaloneDiscountsToStandalonePromoDiscount({
@@ -199,8 +241,17 @@ export async function syncStandaloneDiscountsToStandalonePromoDiscount({
 }) {
   const discount = await findOrCreateStandalonePromoDiscount(admin);
 
+  const cleanStandaloneDiscounts = normalizeStandaloneDiscounts({
+    standaloneDiscounts,
+  });
+
+  const collectionIds = getCollectionIdsFromStandaloneDiscounts(
+    cleanStandaloneDiscounts,
+  );
+
   const cleanConfig = {
-    standaloneDiscounts: normalizeStandaloneDiscounts({ standaloneDiscounts }),
+    standaloneDiscounts: cleanStandaloneDiscounts,
+    collectionIds,
     syncedAt: new Date().toISOString(),
   };
 
@@ -216,6 +267,7 @@ export async function syncStandaloneDiscountsToStandalonePromoDiscount({
     "STANDALONE PROMO COUNT:",
     cleanConfig.standaloneDiscounts?.length || 0,
   );
+  console.log("STANDALONE COLLECTION COUNT:", collectionIds.length);
 
   const metafieldsRes = await admin.graphql(METAFIELDS_SET_MUTATION, {
     variables: {

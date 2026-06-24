@@ -33,6 +33,23 @@ function getProductId(cartLine) {
   return typeof variant?.product?.id === "string" ? variant.product.id : null;
 }
 
+function getProductCollections(cartLine) {
+  const variant = getVariant(cartLine);
+  const collections = variant?.product?.inCollections;
+
+  return Array.isArray(collections) ? collections : [];
+}
+
+function lineIsInCollection(line, collectionId) {
+  if (!collectionId) return false;
+
+  return getProductCollections(line).some(
+    (collection) =>
+      collection?.isMember === true &&
+      normalize(collection?.collectionId) === normalize(collectionId),
+  );
+}
+
 function buildFixedAmountCandidate(lineId, quantity, discountAmount, message) {
   return {
     message,
@@ -107,6 +124,13 @@ function getStandaloneDiscounts(input) {
 }
 
 function lineMatchesStandaloneDiscount(line, discountRule) {
+  const targetType =
+    discountRule.targetType === "COLLECTION" ? "COLLECTION" : "SKU";
+
+  if (targetType === "COLLECTION") {
+    return lineIsInCollection(line, discountRule.collectionId);
+  }
+
   const sku = getVariantSku(line);
   const variantId = getVariantId(line);
   const productId = getProductId(line);
@@ -129,7 +153,7 @@ function lineMatchesStandaloneDiscount(line, discountRule) {
 
 function buildStandaloneDiscountCandidates(input) {
   const candidates = [];
-  const lines = input.cart.lines;
+  const lines = input.cart.lines || [];
   const standaloneDiscounts = getStandaloneDiscounts(input);
 
   for (const discountRule of standaloneDiscounts) {

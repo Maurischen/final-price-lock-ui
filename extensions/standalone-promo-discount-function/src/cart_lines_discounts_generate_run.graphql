@@ -1,28 +1,39 @@
-query CartInput {
+query CartInput($collectionIds: [ID!]) {
   cart {
     lines {
       id
       quantity
+
       attribute(key: "Condition") {
         value
       }
+
       cost {
         amountPerQuantity {
           amount
         }
       }
+
       merchandise {
         __typename
+
         ... on ProductVariant {
           id
           sku
+
           product {
             id
+
+            inCollections(ids: $collectionIds) {
+              collectionId
+              isMember
+            }
           }
         }
       }
     }
   }
+
   discount {
     metafield(
       namespace: "app--299787976705--bundle-discount"
