@@ -31,7 +31,7 @@ import {
 const TITLE = "Standalone Promo Discount";
 const LEGACY_TITLE = "Laptop Bundle Discount";
 const NAMESPACE = "$app:bundle-discount";
-const EXPANDED_NAMESPACE = "app--299787976705--bundle-discount";
+const EXPANDED_NAMESPACE = "app--299787976705--standalone-discount";
 const KEY = "function-configuration";
 
 const FIND_LEGACY_QUERY = `#graphql
